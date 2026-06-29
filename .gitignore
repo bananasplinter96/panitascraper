@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+
+# Logs del Scraper
+scraper/logs/
+*.log
+
+# Datos locales de MinIO (si mapeas carpetas locales)
+.minio_data/

@@ -1,0 +1,76 @@
+services:
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  scraper-worker:
+    build:
+      context: .
+      args:
+        INSTALL_PLAYWRIGHT: "false"
+    restart: unless-stopped
+    command: celery -A tasks worker --loglevel=info --concurrency=1
+    environment:
+      DATABASE_URL: postgresql://panitas:panitas@db:5432/panitasmap
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: minio
+      STORAGE_BUCKET: panitas-scraper
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_SECURE: "false"
+      SCRAPER_LOG_DIR: /app/logs
+      PLAYWRIGHT_ENABLED: "false"
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - scraper_logs:/app/logs
+
+  scraper-beat:
+    build:
+      context: .
+      args:
+        INSTALL_PLAYWRIGHT: "false"
+    restart: unless-stopped
+    command: celery -A tasks beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql://panitas:panitas@db:5432/panitasmap
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - scraper_logs:/app/logs
+
+volumes:
+  minio_data:
+  scraper_logs:
