@@ -28,16 +28,18 @@ class TransformPipeline:
 
     @classmethod
     def from_crawler(cls, crawler):
-        return cls(database_url=crawler.settings.get("DATABASE_URL"))
+        o = cls(database_url=crawler.settings.get("DATABASE_URL"))
+        o.crawler = crawler
+        return o
 
-    def open_spider(self, spider):
+    def open_spider(self):
         self.engine = get_engine(self.database_url)
 
-    def close_spider(self, spider):
+    def close_spider(self):
         if self.engine:
             self.engine.dispose()
 
-    def process_item(self, item, spider):
+    def process_item(self, item):
         adapter = ItemAdapter(item)
         if not adapter.get("is_new", True):
             return item
@@ -46,6 +48,7 @@ class TransformPipeline:
         if not records:
             return item
 
+        spider = self.crawler.spider
         field_map = getattr(spider, "field_map", {})
         status_map = {**DEFAULT_STATUS_MAP, **getattr(spider, "status_map", {})}
         run_id = adapter.get("run_id", "")

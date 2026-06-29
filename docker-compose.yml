@@ -1,12 +1,18 @@
 services:
 
-  redis:
-    image: redis:7-alpine
+  db:
+    image: postgres:16-alpine
     restart: unless-stopped
+    environment:
+      POSTGRES_USER: panitas
+      POSTGRES_PASSWORD: panitas
+      POSTGRES_DB: panitasmap
     ports:
-      - "6379:6379"
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "pg_isready", "-U", "panitas", "-d", "panitasmap"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,48 +35,6 @@ services:
       timeout: 5s
       retries: 5
 
-  scraper-worker:
-    build:
-      context: .
-      args:
-        INSTALL_PLAYWRIGHT: "false"
-    restart: unless-stopped
-    command: celery -A tasks worker --loglevel=info --concurrency=1
-    environment:
-      DATABASE_URL: postgresql://panitas:panitas@db:5432/panitasmap
-      REDIS_URL: redis://redis:6379/0
-      STORAGE_BACKEND: minio
-      STORAGE_BUCKET: panitas-scraper
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-      MINIO_SECURE: "false"
-      SCRAPER_LOG_DIR: /app/logs
-      PLAYWRIGHT_ENABLED: "false"
-    depends_on:
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    volumes:
-      - scraper_logs:/app/logs
-
-  scraper-beat:
-    build:
-      context: .
-      args:
-        INSTALL_PLAYWRIGHT: "false"
-    restart: unless-stopped
-    command: celery -A tasks beat --loglevel=info
-    environment:
-      DATABASE_URL: postgresql://panitas:panitas@db:5432/panitasmap
-      REDIS_URL: redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_healthy
-    volumes:
-      - scraper_logs:/app/logs
-
 volumes:
+  pg_data:
   minio_data:
-  scraper_logs:

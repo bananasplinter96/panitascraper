@@ -70,7 +70,7 @@ class StoragePipeline:
     def from_crawler(cls, crawler):
         return cls(settings=crawler.settings)
 
-    def open_spider(self, spider):
+    def open_spider(self):
         s = self.settings
         backend = s.get("STORAGE_BACKEND", "minio")
         bucket = s.get("STORAGE_BUCKET", "panitas-scraper")
@@ -82,11 +82,11 @@ class StoragePipeline:
             self.backend = _LocalBackend(s.get("LOCAL_STORAGE_DIR", "/app/raw_files"), bucket)
         self.engine = get_engine(s.get("DATABASE_URL"))
 
-    def close_spider(self, spider):
+    def close_spider(self):
         if self.engine:
             self.engine.dispose()
 
-    def process_item(self, item, spider):
+    def process_item(self, item):
         adapter = ItemAdapter(item)
         is_new = adapter.get("is_new", True)
         checksum = adapter["checksum"]
@@ -103,6 +103,8 @@ class StoragePipeline:
                 except Exception as exc:
                     logger.error("Storage error for %s: %s", checksum, exc)
                     storage_path = None
+                logger.info("Saved %s checksum=%s type=%s -> %s",
+                            adapter.get("url", ""), checksum[:12], ext, storage_path)
                 adapter["storage_path"] = storage_path
                 session.merge(ScrapedFile(
                     checksum=checksum,
@@ -112,11 +114,12 @@ class StoragePipeline:
                     storage_path=storage_path,
                 ))
 
-            session.execute(
-                pg_insert(RunFile.__table__)
-                .values(run_id=run_id, checksum=checksum, is_new=is_new)
-                .on_conflict_do_nothing(constraint="uq_run_file")
-            )
+            if run_id:
+                session.execute(
+                    pg_insert(RunFile.__table__)
+                    .values(run_id=run_id, checksum=checksum, is_new=is_new)
+                    .on_conflict_do_nothing(constraint="uq_run_file")
+                )
             session.commit()
 
         return item

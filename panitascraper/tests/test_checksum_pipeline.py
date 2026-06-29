@@ -17,7 +17,7 @@ def _run_checksum(body: bytes, db_result=None):
         sess.__exit__ = MagicMock(return_value=False)
         sess.get.return_value = db_result
         MockSession.return_value = sess
-        return pipeline.process_item(item, spider)
+        return pipeline.process_item(item)
 
 
 class TestChecksumPipeline(unittest.TestCase):

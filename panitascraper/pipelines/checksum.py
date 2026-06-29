@@ -18,14 +18,14 @@ class ChecksumPipeline:
     def from_crawler(cls, crawler):
         return cls(database_url=crawler.settings.get("DATABASE_URL"))
 
-    def open_spider(self, spider):
+    def open_spider(self):
         self.engine = get_engine(self.database_url)
 
-    def close_spider(self, spider):
+    def close_spider(self):
         if self.engine:
             self.engine.dispose()
 
-    def process_item(self, item, spider):
+    def process_item(self, item):
         adapter = ItemAdapter(item)
         body: bytes = adapter.get("body", b"")
         checksum = hashlib.sha256(body).hexdigest()
@@ -35,6 +35,10 @@ class ChecksumPipeline:
             existing = session.get(ScrapedFile, checksum)
 
         adapter["is_new"] = existing is None
-        if not adapter["is_new"]:
-            logger.debug("Duplicate checksum %s for %s", checksum[:12], adapter.get("url"))
+        if adapter["is_new"]:
+            logger.info("New file %s checksum=%s type=%s",
+                        adapter.get("url", ""), checksum[:12], adapter.get("file_type", "?"))
+        else:
+            logger.info("Duplicate %s checksum=%s",
+                        adapter.get("url", ""), checksum[:12])
         return item
