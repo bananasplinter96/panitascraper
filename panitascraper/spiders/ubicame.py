@@ -62,6 +62,18 @@ _HEADERS = {
 
 class UbicameSpider(BaseSpider):
     name = "ubicame"
+    field_map = {
+        "nombre":       "full_name",
+        "cedula":       "ext_venezuela_ci",
+        "edad":         "age",
+        "hospital":     "hospital",
+        "ciudad":       None,
+        "tipo_reporte": "status",
+        "condicion":    None,
+        "estado":       "status",
+        "notas":        "notes",
+    }
+
     allowed_domains = ["911.ubica.me"]
 
     custom_settings = {

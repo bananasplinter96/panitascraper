@@ -85,6 +85,18 @@ def _parse_pfif_xml(xml_text: str) -> list[dict]:
 
 class BusquedaUnificadaVzlaSpider(BaseSpider):
     name = "busquedaunificadavzla"
+    field_map = {
+        "nombre":       "full_name",
+        "cedula":       None,
+        "edad":         "age",
+        "hospital":     None,
+        "ciudad":       None,
+        "tipo_reporte": "note_status",
+        "condicion":    None,
+        "estado":       "note_status",
+        "notas":        "note_text",
+    }
+
     allowed_domains = ["busquedaunificadavzla.com"]
 
     custom_settings = {

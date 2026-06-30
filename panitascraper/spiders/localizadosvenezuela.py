@@ -37,6 +37,18 @@ PAGE_SIZE = 100
 
 class LocalizadosVenezuelaSpider(BaseSpider):
     name = "localizadosvenezuela"
+    field_map = {
+        "nombre":       "nombreCompleto",
+        "cedula":       None,
+        "edad":         None,
+        "hospital":     "nombre",
+        "ciudad":       None,
+        "tipo_reporte": "condicion",
+        "condicion":    "condicion",
+        "estado":       "condicion",
+        "notas":        "observaciones",
+    }
+
     allowed_domains = ["localizadosvenezuela.com"]
 
     custom_settings = {

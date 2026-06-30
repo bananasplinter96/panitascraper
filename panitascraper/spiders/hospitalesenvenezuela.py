@@ -71,6 +71,18 @@ def _record_key(rec: dict) -> str:
 
 class HospitalesEnVenezuelaSpider(BaseSpider):
     name = "hospitalesenvenezuela"
+    field_map = {
+        "nombre":       "nombre",
+        "cedula":       "cedula",
+        "edad":         None,
+        "hospital":     "centro",
+        "ciudad":       None,
+        "tipo_reporte": "condicion",
+        "condicion":    "condicion",
+        "estado":       "condicion",
+        "notas":        "cama",
+    }
+
     allowed_domains = ["hospitalesenvenezuela.com", "ozuxfepfkvnxkywdsqxy.supabase.co"]
 
     custom_settings = {

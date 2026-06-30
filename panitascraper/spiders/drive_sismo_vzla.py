@@ -105,6 +105,37 @@ def _parse_csv(text: str) -> list[dict]:
 
 class DriveSismoVzlaSpider(BaseSpider):
     name = "drive_sismo_vzla"
+    field_map = {
+        "nombre":       "APELLIDO(S)",
+        "cedula":       "CEDULA/ID",
+        "edad":         "EDAD",
+        "hospital":     "HOSPITAL/CENTRO",
+        "ciudad":       "AREA/ZONA",
+        "tipo_reporte": "ESTADO/CONDICION",
+        "condicion":    "DIAGNOSTICO/SERVICIO",
+        "estado":       "ESTADO/CONDICION",
+        "notas":        "COMENTARIOS",
+    }
+
+    def transform_record(self, raw: dict) -> dict:
+        # Unifica clave con y sin acentos (CSV llega con encoding variable)
+        for src, dst in [
+            ("APELLIDO(S)", "APELLIDO(S)"),
+            ("NOMBRE(S)", "NOMBRE(S)"),
+        ]:
+            pass
+        apellidos = raw.get("APELLIDO(S)", raw.get("APELLIDOS", "")).strip()
+        nombres   = raw.get("NOMBRE(S)",   raw.get("NOMBRES", "")).strip()
+        if apellidos and nombres:
+            raw["APELLIDO(S)"] = f"{apellidos} {nombres}"
+        elif nombres:
+            raw["APELLIDO(S)"] = nombres
+        # Normalise cedula key variants
+        for k in list(raw):
+            if "cedula" in k.lower() or "cédula" in k.lower() or "cedula" in k.lower():
+                raw["CEDULA/ID"] = raw.get("CEDULA/ID") or raw[k]
+        return raw
+
     allowed_domains = ["docs.google.com", "drive.google.com"]
 
     custom_settings = {

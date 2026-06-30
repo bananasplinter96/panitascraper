@@ -67,6 +67,18 @@ _JS_READ_ROUTER_STATE = """
 
 class VenezuelaTeBuscaSpider(BaseSpider):
     name = "venezuelatebusca"
+    field_map = {
+        "nombre":       "full_name",
+        "cedula":       "cedula",
+        "edad":         "age",
+        "hospital":     "location",
+        "ciudad":       None,
+        "tipo_reporte": "status",
+        "condicion":    None,
+        "estado":       "status",
+        "notas":        "notes",
+    }
+
     allowed_domains = ["venezuelatebusca.com"]
 
     custom_settings = {

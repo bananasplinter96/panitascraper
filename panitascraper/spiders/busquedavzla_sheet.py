@@ -137,6 +137,18 @@ def _parse_sheet_csv(text: str, label: str) -> list[dict]:
 
 class BusquedaVzlaSheetSpider(BaseSpider):
     name = "busquedavzla_sheet"
+    field_map = {
+        "nombre":       "apellidos_nombres",
+        "cedula":       "cedula",
+        "edad":         "edad",
+        "hospital":     "hospital",
+        "ciudad":       None,
+        "tipo_reporte": "estado",
+        "condicion":    "diagnostico",
+        "estado":       "estado",
+        "notas":        "observaciones",
+    }
+
     allowed_domains = ["docs.google.com"]
 
     custom_settings = {

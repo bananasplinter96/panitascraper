@@ -31,6 +31,18 @@ BASE_URL = "https://ucv-aparecidos.vercel.app/api"
 
 class UcvAparecidosSpider(BaseSpider):
     name = "ucv_aparecidos"
+    field_map = {
+        "nombre":       "nombre",
+        "cedula":       "cedula",
+        "edad":         "edad",
+        "hospital":     "hospital",
+        "ciudad":       None,
+        "tipo_reporte": "estado",
+        "condicion":    None,
+        "estado":       "estado",
+        "notas":        "observaciones",
+    }
+
     allowed_domains = ["ucv-aparecidos.vercel.app"]
 
     custom_settings = {

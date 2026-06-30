@@ -37,6 +37,18 @@ _HEADERS = {
 
 class ReencuentroHelpSpider(BaseSpider):
     name = "reencuentrohelp"
+    field_map = {
+        "nombre":       "display_name",
+        "cedula":       "cedula",
+        "edad":         None,
+        "hospital":     "location_detail",
+        "ciudad":       "region",
+        "tipo_reporte": "kind",
+        "condicion":    None,
+        "estado":       "status",
+        "notas":        "description",
+    }
+
     allowed_domains = ["reencuentro.help", "rwqhswywmdjqyqnpsxqw.supabase.co"]
 
     custom_settings = {

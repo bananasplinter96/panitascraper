@@ -55,6 +55,18 @@ _HEADERS = {
 
 class TeBuscoSpider(BaseSpider):
     name = "tebusco"
+    field_map = {
+        "nombre":       "nombre",
+        "cedula":       None,
+        "edad":         "edad",
+        "hospital":     "referencia",
+        "ciudad":       None,
+        "tipo_reporte": "estado",
+        "condicion":    None,
+        "estado":       "estadoUb",
+        "notas":        "desc",
+    }
+
     allowed_domains = ["www.tebusco.app"]
 
     custom_settings = {

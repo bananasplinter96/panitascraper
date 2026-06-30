@@ -24,6 +24,18 @@ API_URL = "https://busquedavzla.netlify.app/api/reports"
 
 class BusquedaVzlaSpider(BaseSpider):
     name = "busquedavzla"
+    field_map = {
+        "nombre":       "nombre",
+        "cedula":       "cedula",
+        "edad":         "edad",
+        "hospital":     "hospital",
+        "ciudad":       "ciudad",
+        "tipo_reporte": "estado",
+        "condicion":    "condicion",
+        "estado":       "estado",
+        "notas":        "notas",
+    }
+
     allowed_domains = ["busquedavzla.netlify.app"]
 
     custom_settings = {

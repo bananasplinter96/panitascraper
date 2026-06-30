@@ -55,6 +55,18 @@ _HEADERS = {
 
 class SismoEhrSpider(BaseSpider):
     name = "sismo_ehr"
+    field_map = {
+        "nombre":       "nombre",
+        "cedula":       "cedula",
+        "edad":         "edad",
+        "hospital":     "facility_name",
+        "ciudad":       None,
+        "tipo_reporte": "estado",
+        "condicion":    "servicio",
+        "estado":       "estado",
+        "notas":        None,
+    }
+
     allowed_domains = ["sismo-ehr.chourio.dev"]
 
     custom_settings = {

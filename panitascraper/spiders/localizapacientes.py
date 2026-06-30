@@ -41,6 +41,18 @@ MAX_DEPTH = 6            # safety ceiling
 
 class LocalizaPacientesSpider(BaseSpider):
     name = "localizapacientes"
+    field_map = {
+        "nombre":       "nombreCompleto",
+        "cedula":       None,
+        "edad":         "edad",
+        "hospital":     "hospital",
+        "ciudad":       "ciudad",
+        "tipo_reporte": "condicion",
+        "condicion":    "condicion",
+        "estado":       "condicion",
+        "notas":        None,
+    }
+
     allowed_domains = ["localizapacientes.com"]
 
     custom_settings = {

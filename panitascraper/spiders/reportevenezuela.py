@@ -214,6 +214,18 @@ def _parse_cards(html: str) -> list[dict]:
 
 class ReporteVenezuelaSpider(BaseSpider):
     name = "reportevenezuela"
+    field_map = {
+        "nombre":       "nombre",
+        "cedula":       "cedula",
+        "edad":         "edad",
+        "hospital":     "institucion",
+        "ciudad":       None,
+        "tipo_reporte": "estado_busqueda",
+        "condicion":    "estado_persona",
+        "estado":       "estado_persona",
+        "notas":        None,
+    }
+
     allowed_domains = ["reportevenezuela.com"]
 
     custom_settings = {

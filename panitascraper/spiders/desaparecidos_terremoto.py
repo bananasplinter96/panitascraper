@@ -46,6 +46,18 @@ def _build_url(page: int) -> str:
 
 class DesaparecidosTerremotoSpider(BaseSpider):
     name = "desaparecidos_terremoto"
+    field_map = {
+        "nombre":       "nombre",
+        "cedula":       "cedula",
+        "edad":         "edad",
+        "hospital":     "ubicacion",
+        "ciudad":       "ciudad",
+        "tipo_reporte": "estado",
+        "condicion":    "condicion",
+        "estado":       "estado",
+        "notas":        "descripcion",
+    }
+
     allowed_domains = [
         "desaparecidos-terremoto-api.theempire.tech",
         "desaparecidosterremotovenezuela.com",

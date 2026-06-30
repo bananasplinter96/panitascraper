@@ -38,6 +38,18 @@ URL = "https://osirisberbesia.com/pacientesinfo/"
 
 class OsirisBerbesiaSpider(BaseSpider):
     name = "osirisberbesia"
+    field_map = {
+        "nombre":       "nombre",
+        "cedula":       "cedula",
+        "edad":         "edad",
+        "hospital":     "hospital",
+        "tipo_reporte": None,
+        "ciudad":       None,
+        "condicion":    None,
+        "estado":       None,
+        "notas":        "observaciones",
+    }
+
     allowed_domains = ["osirisberbesia.com"]
 
     custom_settings = {
