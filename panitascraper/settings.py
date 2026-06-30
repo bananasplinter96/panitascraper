@@ -39,7 +39,7 @@ MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
 MINIO_SECURE = os.environ.get("MINIO_SECURE", "false").lower() == "true"
 LOCAL_STORAGE_DIR = os.environ.get("LOCAL_STORAGE_DIR", "/app/raw_files")
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://panitas:panitas@localhost:5432/panitasmap")
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://panitas:panitas@localhost:5433/panitasmap")
 
 LOG_LEVEL = os.environ.get("SCRAPY_LOG_LEVEL", "INFO")
 LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
