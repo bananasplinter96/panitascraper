@@ -29,6 +29,7 @@ if _playwright_enabled:
 ITEM_PIPELINES = {
     "panitascraper.pipelines.checksum.ChecksumPipeline": 100,
     "panitascraper.pipelines.storage.StoragePipeline": 200,
+    "panitascraper.pipelines.transform.TransformPipeline": 300,
 }
 
 STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "minio")
