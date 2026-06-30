@@ -1378,8 +1378,8 @@ resolution-markers = [
     "python_full_version >= '3.14'",
 ]
 dependencies = [
-    { name = "playwright", marker = "python_full_version >= '3.14'" },
-    { name = "scrapy", marker = "python_full_version >= '3.14'" },
+    { name = "playwright" },
+    { name = "scrapy" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cb/bc/12435db52dcb0cb33698e499b35411fc2553bcddf228291083a2019036d4/scrapy_playwright-0.0.46.tar.gz", hash = "sha256:2efe31155b2bbbd13fb011f3c189c21a6f34409c7f7b958881780509ce14a6bb", size = 48429, upload-time = "2026-01-21T12:11:16.653Z" }
 wheels = [
@@ -1394,8 +1394,8 @@ resolution-markers = [
     "python_full_version < '3.14'",
 ]
 dependencies = [
-    { name = "playwright", marker = "python_full_version < '3.14'" },
-    { name = "scrapy", marker = "python_full_version < '3.14'" },
+    { name = "playwright" },
+    { name = "scrapy" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e7/20/bb9d4dcc71dfc6b742c86538432d5067fedc178b8a9076773143c4ca2979/scrapy_playwright-0.0.47.tar.gz", hash = "sha256:22fae246e4bdb85e91abd57453c6645ba3b99137295f19c931370f736183981a", size = 49091, upload-time = "2026-06-13T03:57:39.227Z" }
 wheels = [

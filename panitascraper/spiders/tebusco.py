@@ -1,27 +1,6 @@
 """
 TeBuscoSpider — spider for tebusco.app.
-
-PWA offline-first (Bootstrap + vanilla JS) respaldada por Supabase a través
-de un gatekeeper PHP en /tebusco-portero.php.
-
-Operaciones POST disponibles:
-  { "op": "buscar", "q": "<texto>" }
-    → array de hasta 80 registros (contiene búsqueda en nombre y cédula)
-  { "op": "desaparecidos" }
-    → array de hasta 100 registros con state="search" (offset ignorado)
-  { "op": "reportar", "registro": {...} }  — escritura, no usada
-
-No existe paginación real: el servidor ignora limit/offset.
-
-Estrategia — exhaustión alfabética por CONTAINS:
-  1. Iterar todos los bigrams aa..zz como query al portero.
-  2. Si el resultado == 80 (cap), expandir a trigrams (prefijo + a..z).
-  3. Continuar recursivamente hasta MAX_DEPTH.
-  4. Deduplicar por uid antes de emitir el item final.
-
-Dataset: ~7 281 registros totales (safe, hurt, search, reunited).
-Campos: uid, name, cid, state, place, msg, by_who, phone,
-        color_pulsera, codigo_pulsera, ts, updated_at.
+Optimizado para guardar resultados en tiempo real y evitar acumulación en memoria RAM.
 """
 
 import json
@@ -78,18 +57,17 @@ class TeBuscoSpider(BaseSpider):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._records: dict[str, dict] = {}  # dedup by uid
-        self._pending: int = 0
+        # Solo guardamos los UIDs vistos para control de estadísticas en consola
+        self._seen: set[str] = set()
 
     # ------------------------------------------------------------------
     # Startup
     # ------------------------------------------------------------------
 
     async def start(self) -> AsyncIterator:
-        # Seed with all 2-char substring queries: aa..zz
+        # Semilla con todas las combinaciones de 2 caracteres: aa..zz
         for a in ALPHABET:
             for b in ALPHABET:
-                self._pending += 1
                 yield self._buscar_request(a + b)
 
     # ------------------------------------------------------------------
@@ -106,7 +84,7 @@ class TeBuscoSpider(BaseSpider):
             errback=self._buscar_error,
             headers=_HEADERS,
             meta={"query": query},
-            dont_filter=True,  # same URL, different POST bodies
+            dont_filter=True,  # Mismo URL, diferentes cuerpos POST
         )
 
     def _parse_buscar(self, response: Response) -> Generator:
@@ -123,61 +101,41 @@ class TeBuscoSpider(BaseSpider):
         else:
             logger.warning("HTTP %d for query=%r", response.status, query)
 
-        # Collect unique records
-        before = len(self._records)
+        # Si obtuvimos resultados, los enviamos a almacenar inmediatamente
+        if results:
+            # Generamos una URL virtual única para que se cree un archivo diferente por búsqueda
+            virtual_url = f"{PORTERO_URL}?q={query}"
+            yield ScrapedPageItem(
+                url=virtual_url,
+                body=response.body,
+                file_type="json",
+                spider_name=self.name,
+                run_id=self.run_id,
+                records=results,
+            )
+
+        # Calculamos estadísticas de duplicados para mantenerte informado en consola
+        new_count = 0
         for rec in results:
             uid = rec.get("uid")
-            if uid:
-                self._records[uid] = rec
-        new_count = len(self._records) - before
+            if uid and uid not in self._seen:
+                self._seen.add(uid)
+                new_count += 1
 
-        logger.debug(
-            "query=%r → %d results, %d new (total unique=%d)",
-            query, len(results), new_count, len(self._records),
+        logger.info(
+            "query=%r → %d results, %d new (total unique logged=%d)",
+            query, len(results), new_count, len(self._seen),
         )
 
-        # Expand sub-queries BEFORE decrementing to avoid false zero
-        sub_requests: list[scrapy.Request] = []
+        # Si alcanzamos el límite del API (80) y no hemos llegado a la profundidad máxima,
+        # expandimos la búsqueda agregando un tercer carácter (ej. "jua", "jub"...)
         if len(results) >= RESULT_CAP and len(query) < MAX_DEPTH:
             for c in ALPHABET:
-                sub_requests.append(self._buscar_request(query + c))
-            self._pending += len(sub_requests)
-
-        self._pending -= 1
-
-        for req in sub_requests:
-            yield req
-
-        if self._pending == 0:
-            yield from self._yield_aggregated()
+                yield self._buscar_request(query + c)
 
     def _buscar_error(self, failure) -> Generator:
         query = failure.request.meta.get("query", "?")
         logger.warning("Request failed for query=%r: %s", query, failure.value)
-        self._pending -= 1
-        if self._pending == 0:
-            yield from self._yield_aggregated()
-
-    # ------------------------------------------------------------------
-    # Final aggregated item
-    # ------------------------------------------------------------------
-
-    def _yield_aggregated(self) -> Generator:
-        records = list(self._records.values())
-        if not records:
-            logger.warning("No records collected")
-            return
-        logger.info("Exhaustion complete — %d unique records", len(records))
-        self.crawler.stats.set_value("records_unique", len(records))
-        body = json.dumps(records).encode("utf-8")
-        yield ScrapedPageItem(
-            url=PORTERO_URL,
-            body=body,
-            file_type="json",
-            spider_name=self.name,
-            run_id=self.run_id,
-            records=records,
-        )
 
     # ------------------------------------------------------------------
     # Required overrides

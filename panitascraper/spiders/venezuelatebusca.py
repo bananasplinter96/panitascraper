@@ -1,22 +1,6 @@
 """
 VenezuelaTeBuscaSpider — Playwright-based spider for venezuelatebusca.com.
-
-No REST API exists. Data is server-side rendered via React Router v7 and embedded
-in window.__reactRouterContext as streamed loader data. Pagination uses a cursor
-(UUID of the last record). The spider:
-  1. Loads the page with Playwright.
-  2. Extracts persons from window.__reactRouterDataRouter.state.loaderData.
-  3. Navigates via the React Router client router with the nextCursor until hasMore=false.
-
-Filters used: status=all, visibility=all (fetches both missing and found).
-
-Stats visible on site (aggregated from multiple sources):
-  total ~70k, missing ~47k, found ~22k — but only records submitted to THIS
-  site are accessible; the count grows as new registrations arrive.
-
-Fields per record: id, firstName, lastName, age, gender, lastSeen, status,
-photoUrl, createdAt, updatedAt, lastActivityAt, reporter (name/phone/email),
-sources, tips.
+Optimizado para guardar resultados página por página en tiempo real.
 """
 
 import json
@@ -25,14 +9,13 @@ from typing import AsyncIterator, Generator
 
 import scrapy
 from scrapy.http import Response
-
+from panitascraper.items import ScrapedPageItem
 from panitascraper.spiders.base import BaseSpider
 
 logger = logging.getLogger(__name__)
 
 SITE_URL = "https://venezuelatebusca.com/?status=all&visibility=all"
 
-# JS to read persons + pagination from the React Router state
 _JS_READ_STATE = """
 (function() {
   const router = window.__reactRouterDataRouter;
@@ -49,10 +32,6 @@ _JS_READ_STATE = """
 })()
 """
 
-# JS to navigate React Router to the next cursor page
-_JS_NAVIGATE = "window.__reactRouterDataRouter.navigate({0})"
-
-# JS to read state AFTER a client-side navigation (router state, not SSR context)
 _JS_READ_ROUTER_STATE = """
 (function() {
   const d = window.__reactRouterDataRouter?.state?.loaderData?.['routes/_index'];
@@ -88,7 +67,6 @@ class VenezuelaTeBuscaSpider(BaseSpider):
         },
         "PLAYWRIGHT_BROWSER_TYPE": "chromium",
         "PLAYWRIGHT_LAUNCH_OPTIONS": {
-            # Use full Chrome (not headless shell) to avoid Cloudflare bot detection
             "headless": False,
             "executable_path": (
                 r"C:\Users\Darm_\AppData\Local\ms-playwright"
@@ -130,21 +108,18 @@ class VenezuelaTeBuscaSpider(BaseSpider):
 
     async def _parse_page(self, response: Response) -> AsyncIterator:
         page = response.meta["playwright_page"]
-        all_records: list[dict] = []
+        total_scraped = 0
 
         try:
-            # Remove automation signals before Cloudflare checks
             await page.add_init_script(
                 "Object.defineProperty(navigator, 'webdriver', { get: () => undefined })"
             )
 
-            # If Cloudflare challenge page, wait for it to resolve
             if response.status in (403, 429, 503):
                 logger.info("Got %d — waiting for Cloudflare challenge to resolve...", response.status)
                 await page.wait_for_url("**/venezuelatebusca.com/**", timeout=20_000)
                 await page.wait_for_load_state("networkidle", timeout=20_000)
 
-            # Wait for React Router hydration
             await page.wait_for_function(
                 "window.__reactRouterContext?.state?.loaderData?.['routes/_index']?.persons !== undefined"
                 " || window.__reactRouterDataRouter?.state?.loaderData?.['routes/_index']?.persons !== undefined",
@@ -164,21 +139,27 @@ class VenezuelaTeBuscaSpider(BaseSpider):
                 pagination = data.get("pagination", {})
 
                 if persons:
-                    all_records.extend(persons)
+                    total_scraped += len(persons)
+                    self.crawler.stats.inc_value("records_extracted", len(persons))
+                    
+                    # Guardamos la página en tiempo real
+                    virtual_url = f"https://venezuelatebusca.com/?status=all&visibility=all&page={page_num}"
+                    yield self._make_synthetic_item(response, virtual_url, persons)
+
                     logger.info(
                         "Page %d: %d records (total so far: %d) | hasMore=%s",
-                        page_num, len(persons), len(all_records), pagination.get("hasMore"),
+                        page_num, len(persons), total_scraped, pagination.get("hasMore"),
                     )
 
                 if not pagination.get("hasMore") or not pagination.get("nextCursor"):
-                    logger.info("Pagination complete after %d pages (%d records)", page_num, len(all_records))
+                    logger.info("Pagination complete after %d pages (%d records)", page_num, total_scraped)
                     break
 
-                # Navigate to next cursor page via React Router client router
+                # Navegar al siguiente cursor de página
                 cursor = pagination["nextCursor"]
                 next_url = f"/?status=all&visibility=all&cursor={cursor}"
                 await page.evaluate(f'window.__reactRouterDataRouter.navigate("{next_url}")')
-                # Wait for new persons to load
+                
                 await page.wait_for_function(
                     f"""
                     (function() {{
@@ -195,17 +176,11 @@ class VenezuelaTeBuscaSpider(BaseSpider):
         finally:
             await page.close()
 
-        if all_records:
-            self.crawler.stats.inc_value("records_extracted", len(all_records))
-            yield self._make_synthetic_item(response, all_records)
-
-    def _make_synthetic_item(self, response: Response, records: list[dict]):
-        """Wrap all collected records into a single item for the pipeline."""
-        from panitascraper.items import ScrapedPageItem
-        import json as _json
-        body = _json.dumps(records).encode("utf-8")
+    def _make_synthetic_item(self, response: Response, url: str, records: list[dict]):
+        """Crea el item para ser procesado progresivamente por las pipelines."""
+        body = json.dumps(records).encode("utf-8")
         return ScrapedPageItem(
-            url=SITE_URL,
+            url=url,
             body=body,
             file_type="json",
             spider_name=self.name,

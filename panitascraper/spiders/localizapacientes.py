@@ -1,23 +1,6 @@
 """
 LocalizaPacientesSpider — spider for localizapacientes.com.
-
-Next.js app backed by a simple search API:
-  GET /api/search?q=<term>  →  { resultados: [...], total: N }  (cap: 50 per query)
-  GET /api/hospitals         →  list of 19 hospitals with patient counts
-  GET /api/stats             →  aggregate counts
-
-No paginated bulk endpoint exists. Strategy: alphabetic prefix exhaustion.
-  1. Seed with all 2-letter prefixes (aa … zz).
-  2. Any prefix returning exactly 50 results (the API cap) expands into
-     26 3-letter sub-prefixes.
-  3. Recurse up to MAX_DEPTH letters deep.
-  4. All unique records are collected in memory (keyed by ID).
-  5. The last callback to complete detects pending==0 and yields the
-     aggregated item through the pipeline.
-
-Current dataset: ~3,656 patients across 19 Caracas hospitals.
-Fields per record: id, nombreCompleto, edad, condicion, hospital, ciudad,
-                   estado, fechaIngreso, lat, lng, direccion.
+Optimizado para guardar resultados en tiempo real y evitar acumulación en memoria RAM.
 """
 
 import json
@@ -64,24 +47,23 @@ class LocalizaPacientesSpider(BaseSpider):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._records: dict[str, dict] = {}   # dedup by patient ID
-        self._pending: int = 0                 # in-flight search requests
+        # Registramos únicamente los IDs vistos para estadísticas
+        self._seen: set[str] = set()
 
     # ------------------------------------------------------------------
     # Startup
     # ------------------------------------------------------------------
 
     async def start(self) -> AsyncIterator:
-        # Store hospital metadata as its own item
+        # Guardamos la metadata de hospitales directamente
         yield scrapy.Request(
             f"{API_BASE}/hospitals",
             callback=self._parse_hospitals,
             errback=self.handle_error,
         )
-        # Seed 2-letter prefixes: aa, ab, … zz  (676 requests)
+        # Semilla inicial con prefijos de 2 letras: aa..zz (676 peticiones)
         for a in ALPHABET:
             for b in ALPHABET:
-                self._pending += 1
                 yield self._search_request(a + b)
 
     # ------------------------------------------------------------------
@@ -123,61 +105,37 @@ class LocalizaPacientesSpider(BaseSpider):
         else:
             logger.warning("HTTP %d for prefix=%r", response.status, prefix)
 
-        # Collect unique records
-        before = len(self._records)
+        # Emitimos el item de la página inmediatamente si contiene resultados
+        if results:
+            virtual_url = f"{API_BASE}/search?q={prefix}"
+            yield ScrapedPageItem(
+                url=virtual_url,
+                body=response.body,
+                file_type="json",
+                spider_name=self.name,
+                run_id=self.run_id,
+                records=results,
+            )
+
+        # Control de estadísticas
+        new_count = 0
         for rec in results:
             rid = rec.get("id")
-            if rid:
-                self._records[rid] = rec
-        new_count = len(self._records) - before
+            if rid and rid not in self._seen:
+                self._seen.add(rid)
+                new_count += 1
 
-        logger.debug("prefix=%r → %d results, %d new (total=%d)",
-                     prefix, len(results), new_count, len(self._records))
+        logger.info("prefix=%r → %d results, %d new (total unique logged=%d)",
+                    prefix, len(results), new_count, len(self._seen))
 
-        # Expand sub-prefixes BEFORE decrementing, to avoid false zero
-        sub_requests: list[scrapy.Request] = []
+        # Si topamos el límite (50), expandimos recursivamente
         if len(results) >= RESULT_CAP and len(prefix) < MAX_DEPTH:
             for c in ALPHABET:
-                sub_requests.append(self._search_request(prefix + c))
-            self._pending += len(sub_requests)
-
-        # Now decrement for the completed request
-        self._pending -= 1
-
-        for req in sub_requests:
-            yield req
-
-        # If this was the last in-flight request, emit the aggregated item
-        if self._pending == 0:
-            yield from self._yield_aggregated()
+                yield self._search_request(prefix + c)
 
     def _search_error(self, failure) -> Generator:
         prefix = failure.request.meta.get("prefix", "?")
         logger.warning("Request failed for prefix=%r: %s", prefix, failure.value)
-        self._pending -= 1
-        if self._pending == 0:
-            yield from self._yield_aggregated()
-
-    # ------------------------------------------------------------------
-    # Final aggregated item
-    # ------------------------------------------------------------------
-
-    def _yield_aggregated(self) -> Generator:
-        records = list(self._records.values())
-        if not records:
-            logger.warning("No patient records collected")
-            return
-        logger.info("Prefix exhaustion complete — %d unique patients", len(records))
-        self.crawler.stats.set_value("patients_unique", len(records))
-        body = json.dumps(records).encode("utf-8")
-        yield ScrapedPageItem(
-            url=f"{API_BASE}/search",
-            body=body,
-            file_type="json",
-            spider_name=self.name,
-            run_id=self.run_id,
-            records=records,
-        )
 
     # ------------------------------------------------------------------
     # Required BaseSpider overrides

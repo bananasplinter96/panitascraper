@@ -1,32 +1,6 @@
 """
 HospitalesEnVenezuelaSpider — spider for hospitalesenvenezuela.com.
-
-Stack: PWA de un solo archivo HTML + Supabase (PostgREST + RPCs).
-La tabla `pacientes` tiene RLS habilitado y no permite lectura directa
-con la clave anon. El acceso público es exclusivamente via RPC:
-
-  POST /rest/v1/rpc/buscar_paciente  { "p_term": "<texto>" }
-    → array de hasta 30 registros (CONTAINS en nombre y cédula)
-    Mínimo de caracteres en p_term: 3.
-    Sin paginación ni ID único por registro.
-
-  POST /rest/v1/rpc/estadisticas  {}
-    → { pacientes, voluntarios_activos, encontradas, altas }
-
-  GET  /rest/v1/hospitales?select=...&activo=eq.true
-    → 292 centros de salud (lectura directa, sin RLS)
-
-Estrategia — exhaustión por trigrams (CONTAINS):
-  1. Iterar todos los trigrams aaa..zzz como p_term.
-  2. Si resultado == 30 (cap), expandir a quadgrams (trigram + a..z).
-  3. Continuar recursivamente hasta MAX_DEPTH.
-  4. Deduplicar por clave compuesta (nombre + cedula + centro + registrado).
-
-Dataset: ~34 317 pacientes · 292 hospitales/centros.
-Campos: nombre, detalle, cedula, centro, ciudad, telefono, estado,
-        estado_por, estado_fecha, registrado, registrado_por,
-        vol_nombre, vol_tel, contacto, correcciones,
-        zona_rescate, contactado_familiar.
+Optimizado para guardar resultados en tiempo real y evitar acumulación en memoria RAM.
 """
 
 import hashlib
@@ -94,8 +68,8 @@ class HospitalesEnVenezuelaSpider(BaseSpider):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._records: dict[str, dict] = {}  # dedup by composite key
-        self._pending: int = 0
+        # Solo guardamos los hashes únicos para estadísticas, ahorrando RAM
+        self._seen: set[str] = set()
 
     # ------------------------------------------------------------------
     # Startup
@@ -122,11 +96,10 @@ class HospitalesEnVenezuelaSpider(BaseSpider):
             errback=self.handle_error,
             headers=_HEADERS,
         )
-        # Seed all 3-letter trigrams: aaa … zzz
+        # Seed all 3-letter trigrams: aaa … zzz (17,576 peticiones)
         for a in ALPHABET:
             for b in ALPHABET:
                 for c in ALPHABET:
-                    self._pending += 1
                     yield self._buscar_request(a + b + c)
 
     # ------------------------------------------------------------------
@@ -181,56 +154,37 @@ class HospitalesEnVenezuelaSpider(BaseSpider):
         else:
             logger.warning("HTTP %d for term=%r", response.status, term)
 
-        before = len(self._records)
+        # Si hay resultados, los emitimos progresivamente
+        if results:
+            virtual_url = f"{SUPABASE_URL}/rest/v1/rpc/buscar_paciente?term={term}"
+            yield ScrapedPageItem(
+                url=virtual_url,
+                body=response.body,
+                file_type="json",
+                spider_name=self.name,
+                run_id=self.run_id,
+                records=results,
+            )
+
+        # Calculamos estadísticas de registros únicos encontrados
+        new_count = 0
         for rec in results:
             key = _record_key(rec)
-            self._records[key] = rec
-        new_count = len(self._records) - before
+            if key not in self._seen:
+                self._seen.add(key)
+                new_count += 1
 
-        logger.debug("term=%r → %d results, %d new (total=%d)",
-                     term, len(results), new_count, len(self._records))
+        logger.info("term=%r → %d results, %d new (total unique logged=%d)",
+                    term, len(results), new_count, len(self._seen))
 
-        sub_requests: list[scrapy.Request] = []
+        # Si topamos con el límite de 30, expandimos con una letra adicional de forma recursiva
         if len(results) >= RESULT_CAP and len(term) < MAX_DEPTH:
             for c in ALPHABET:
-                sub_requests.append(self._buscar_request(term + c))
-            self._pending += len(sub_requests)
-
-        self._pending -= 1
-
-        for req in sub_requests:
-            yield req
-
-        if self._pending == 0:
-            yield from self._yield_aggregated()
+                yield self._buscar_request(term + c)
 
     def _buscar_error(self, failure) -> Generator:
         term = failure.request.meta.get("term", "?")
         logger.warning("Request failed for term=%r: %s", term, failure.value)
-        self._pending -= 1
-        if self._pending == 0:
-            yield from self._yield_aggregated()
-
-    # ------------------------------------------------------------------
-    # Final item
-    # ------------------------------------------------------------------
-
-    def _yield_aggregated(self) -> Generator:
-        records = list(self._records.values())
-        if not records:
-            logger.warning("No patient records collected")
-            return
-        logger.info("Exhaustion complete — %d unique patients", len(records))
-        self.crawler.stats.set_value("patients_unique", len(records))
-        body = json.dumps(records).encode("utf-8")
-        yield ScrapedPageItem(
-            url=f"{SUPABASE_URL}/rest/v1/rpc/buscar_paciente",
-            body=body,
-            file_type="json",
-            spider_name=self.name,
-            run_id=self.run_id,
-            records=records,
-        )
 
     # ------------------------------------------------------------------
     # Required overrides
