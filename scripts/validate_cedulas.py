@@ -16,6 +16,7 @@ Uso:
 """
 
 import os
+import re
 import sqlite3
 import sys
 
@@ -61,7 +62,8 @@ def main():
         print(f"Personas con cédula a validar: {len(rows)}")
 
         for persona_id, cedula, nombre in rows:
-            nombre_oficial = padron.get(cedula)
+            cedula_norm = re.sub(r"[^0-9]", "", cedula or "")
+            nombre_oficial = padron.get(cedula_norm)
 
             if not nombre_oficial:
                 categoria, score = "sin_registro", None

@@ -65,9 +65,21 @@ def init_sqlite(con: sqlite3.Connection) -> None:
 
 
 def get_target_cedulas(limit: int | None) -> list[str]:
+    """
+    Extrae cédulas normalizadas (solo dígitos) desde cualquier formato en
+    que estén guardadas ("V-12345678", "12.345.678", "E-12345678", etc.).
+    Antes solo se tomaban las que ya estaban en dígitos puros, dejando
+    fuera ~4,200 cédulas con prefijo/puntuación en producción.
+    """
     engine = get_engine(DATABASE_URL)
     with Session(engine) as session:
-        q = "SELECT DISTINCT cedula FROM personas WHERE cedula IS NOT NULL AND cedula ~ '^[0-9]{6,9}$' ORDER BY cedula"
+        q = """
+            SELECT DISTINCT regexp_replace(cedula, '[^0-9]', '', 'g') AS cedula_norm
+            FROM personas
+            WHERE cedula IS NOT NULL AND cedula != ''
+              AND length(regexp_replace(cedula, '[^0-9]', '', 'g')) BETWEEN 6 AND 9
+            ORDER BY cedula_norm
+        """
         if limit:
             q += f" LIMIT {int(limit)}"
         rows = session.execute(text(q)).fetchall()
