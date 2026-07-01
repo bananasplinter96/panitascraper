@@ -10,3 +10,6 @@ scraper/logs/
 
 # Datos locales de MinIO (si mapeas carpetas locales)
 .minio_data/
+
+# Padrón local descargado por scrape_target_cedulas.py (dato, no código)
+panitascraper/spiders/datos/

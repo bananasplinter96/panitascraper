@@ -25,16 +25,20 @@ MAX_DEPTH = 6            # safety ceiling
 class LocalizaPacientesSpider(BaseSpider):
     name = "localizapacientes"
     field_map = {
+        "id":           "_id",
         "nombre":       "nombreCompleto",
-        "cedula":       None,
         "edad":         "edad",
+        "condicion":    "condicion",
         "hospital":     "hospital",
         "ciudad":       "ciudad",
+        "estado":       "estado",
         "tipo_reporte": "condicion",
-        "condicion":    "condicion",
-        "estado":       "condicion",
-        "notas":        None,
+        "notas":        "direccion",
     }
+
+    def transform_record(self, raw: dict) -> dict:
+        raw["_id"] = f"localizapacientes:{raw.get('id', '')}"
+        return raw
 
     allowed_domains = ["localizapacientes.com"]
 

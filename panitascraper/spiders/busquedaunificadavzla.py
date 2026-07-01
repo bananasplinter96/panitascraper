@@ -77,6 +77,7 @@ def _parse_pfif_xml(xml_text: str) -> list[dict]:
             "source_date": t("source_date"),
             "full_name": t("full_name"),
             "age": t("age"),
+            "photo_url": t("photo_url"),
             "note_status": nt("status"),
             "note_text": nt("text"),
         })
@@ -86,16 +87,19 @@ def _parse_pfif_xml(xml_text: str) -> list[dict]:
 class BusquedaUnificadaVzlaSpider(BaseSpider):
     name = "busquedaunificadavzla"
     field_map = {
-        "nombre":       "full_name",
-        "cedula":       None,
-        "edad":         "age",
-        "hospital":     None,
-        "ciudad":       None,
-        "tipo_reporte": "note_status",
-        "condicion":    None,
-        "estado":       "note_status",
-        "notas":        "note_text",
+        "id":               "_id",
+        "nombre":           "full_name",
+        "edad":             "age",
+        "foto_url":         "photo_url",
+        "tipo_reporte":     "note_status",
+        "estado":           "note_status",
+        "notas":            "note_text",
+        "reportero_nombre": "source_name",
     }
+
+    def transform_record(self, raw: dict) -> dict:
+        raw["_id"] = raw.get("person_record_id", "")
+        return raw
 
     allowed_domains = ["busquedaunificadavzla.com"]
 

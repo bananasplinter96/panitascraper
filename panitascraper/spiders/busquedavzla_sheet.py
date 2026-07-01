@@ -138,16 +138,33 @@ def _parse_sheet_csv(text: str, label: str) -> list[dict]:
 class BusquedaVzlaSheetSpider(BaseSpider):
     name = "busquedavzla_sheet"
     field_map = {
-        "nombre":       "apellidos_nombres",
-        "cedula":       "cedula",
-        "edad":         "edad",
-        "hospital":     "hospital",
-        "ciudad":       None,
-        "tipo_reporte": "estado",
-        "condicion":    "diagnostico",
-        "estado":       "estado",
-        "notas":        "observaciones",
+        "id":              "_id",
+        "nombre":          "apellidos_nombres",
+        "cedula":          "cedula",
+        "edad":            "edad",
+        "sexo":            "sexo",
+        "hospital":        "hospital",
+        "telefono_familiar": "telefono",
+        "ciudad":          "direccion",
+        "condicion":       "diagnostico",
+        "tipo_reporte":    "estado",
+        "estado":          "estado",
+        "notas":           "_notas",
     }
+
+    def transform_record(self, raw: dict) -> dict:
+        import hashlib as _hl
+        nombre = raw.get("apellidos_nombres", "")
+        cedula = raw.get("cedula", "")
+        sheet = raw.get("_sheet", "")
+        key = f"{nombre}:{cedula}:{sheet}"
+        raw["_id"] = f"busquedavzla_sheet:{_hl.md5(key.encode()).hexdigest()[:12]}"
+        parts = [p for p in (
+            raw.get("observaciones"),
+            f"Fuente: {raw['origen']}" if raw.get("origen") else None,
+        ) if p]
+        raw["_notas"] = " | ".join(parts)
+        return raw
 
     allowed_domains = ["docs.google.com"]
 

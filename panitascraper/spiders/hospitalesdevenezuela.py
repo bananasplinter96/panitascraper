@@ -74,9 +74,51 @@ def _extract_people(rsc_body: str) -> list[dict]:
     return records
 
 
+_FALLECIDO_KEYWORDS = {"fallecido", "fallecida", "deceased", "obito", "exitus"}
+_INGRESADO_KEYWORDS = {"alta", "hospitalizado", "uci", "estable", "grave", "ingreso", "ingresado"}
+
+
 class HospitalesDeVenezuelaSpider(BaseSpider):
     name = "hospitalesdevenezuela"
     allowed_domains = ["hospitalesdevenezuela.com"]
+
+    field_map = {
+        "id":           "_id",
+        "nombre":       "_nombre",
+        "edad":         "age",
+        "cedula":       "idNumber",
+        "hospital":     "_hospital",
+        "ciudad":       "_ciudad",
+        "condicion":    "_condicion",
+        "tipo_reporte": "_tipo_reporte",
+        "notas":        "_notas",
+    }
+
+    def transform_record(self, raw: dict) -> dict:
+        raw["_id"] = f"hospitalesvzla:{raw.get('id', '')}"
+        first = (raw.get("firstName") or "").strip()
+        last  = (raw.get("lastName") or "").strip()
+        raw["_nombre"] = f"{first} {last}".strip()
+
+        hosp = raw.get("hospital") or {}
+        raw["_hospital"] = raw.get("currentHospital") or (hosp.get("name") if isinstance(hosp, dict) else "")
+        raw["_ciudad"]   = raw.get("foundLocation") or (hosp.get("location") if isinstance(hosp, dict) else "")
+
+        notes_raw = (raw.get("notes") or "").strip()
+        notes_lower = notes_raw.lower()
+        if any(kw in notes_lower for kw in _FALLECIDO_KEYWORDS):
+            raw["_tipo_reporte"] = "fallecido"
+            raw["_condicion"] = notes_raw
+            raw["_notas"] = ""
+        elif any(kw in notes_lower for kw in _INGRESADO_KEYWORDS):
+            raw["_tipo_reporte"] = "ingresado"
+            raw["_condicion"] = notes_raw
+            raw["_notas"] = ""
+        else:
+            raw["_tipo_reporte"] = ""
+            raw["_condicion"] = ""
+            raw["_notas"] = notes_raw
+        return raw
 
     custom_settings = {
         "DOWNLOAD_DELAY": 0.5,

@@ -215,16 +215,27 @@ def _parse_cards(html: str) -> list[dict]:
 class ReporteVenezuelaSpider(BaseSpider):
     name = "reportevenezuela"
     field_map = {
+        "id":           "_id",
         "nombre":       "nombre",
         "cedula":       "cedula",
         "edad":         "edad",
         "hospital":     "institucion",
-        "ciudad":       None,
         "tipo_reporte": "estado_busqueda",
         "condicion":    "estado_persona",
         "estado":       "estado_persona",
-        "notas":        None,
+        "notas":        "_notas",
     }
+
+    @staticmethod
+    def _make_id(nombre: str, institucion: str) -> str:
+        import hashlib as _hl
+        key = f"{nombre.upper()}:{institucion.upper()}"
+        return f"reportevenezuela:{_hl.md5(key.encode()).hexdigest()[:12]}"
+
+    def transform_record(self, raw: dict) -> dict:
+        raw["_id"] = self._make_id(raw.get("nombre", ""), raw.get("institucion", ""))
+        raw["_notas"] = f"{raw.get('fuente', '')} | {raw.get('institucion', '')}".strip(" |")
+        return raw
 
     allowed_domains = ["reportevenezuela.com"]
 

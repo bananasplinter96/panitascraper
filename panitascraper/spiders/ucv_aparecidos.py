@@ -32,16 +32,34 @@ BASE_URL = "https://ucv-aparecidos.vercel.app/api"
 class UcvAparecidosSpider(BaseSpider):
     name = "ucv_aparecidos"
     field_map = {
-        "nombre":       "nombre",
-        "cedula":       "cedula",
-        "edad":         "edad",
-        "hospital":     "hospital",
-        "ciudad":       None,
-        "tipo_reporte": "estado",
-        "condicion":    None,
-        "estado":       "estado",
-        "notas":        "observaciones",
+        "id":                    "_id",
+        "nombre":                "nombre",
+        "cedula":                "cedula",
+        "foto_url":              "foto_signed_url",
+        "tipo_reporte":          "estado",
+        "estado":                "estado",
+        "ultimo_lugar":          "ultima_ubicacion",
+        "confirmacion_tipo":     "tipo_confirmacion",
+        "confirmacion_detalle":  "detalles_confirmacion",
+        "contacto_familiar":     "nombre_contacto",
+        "telefono_familiar":     "telefono_contacto",
+        "reportero_nombre":      "_reportero_nombre",
+        "reportero_telefono":    "contacto_reportador",
+        "notas":                 "_notas",
     }
+
+    def transform_record(self, raw: dict) -> dict:
+        raw["_id"] = f"ucv:{raw.get('id', '')}"
+        raw["_reportero_nombre"] = (
+            raw.get("reportado_aparicion_por") or raw.get("registrado_por") or ""
+        )
+        parts = [p for p in (
+            raw.get("descripcion"),
+            f"Carrera: {raw['carrera']}" if raw.get("carrera") else None,
+            f"Facultad: {raw['facultad']}" if raw.get("facultad") else None,
+        ) if p]
+        raw["_notas"] = " | ".join(parts)
+        return raw
 
     allowed_domains = ["ucv-aparecidos.vercel.app"]
 

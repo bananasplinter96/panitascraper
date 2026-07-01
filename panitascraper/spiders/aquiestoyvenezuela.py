@@ -51,6 +51,28 @@ class AquiEstoyVenezuelaSpider(BaseSpider):
     name = "aquiestoyvenezuela"
     allowed_domains = ["aquiestoyvenezuela.com"]
 
+    field_map = {
+        "id":                 "_id",
+        "nombre":             "nombre",
+        "cedula":             "cedula",
+        "edad":               "edad",
+        "ciudad":             "ciudad",
+        "ultimo_lugar":       "ultima_ubicacion",
+        "hospital":           "ubicacion_encontrado",
+        "tipo_reporte":       "estado",
+        "estado":             "estado",
+        "foto_url":           "foto_url",
+        "telefono_familiar":  "telefono_contacto",
+        "contacto_familiar":  "nombre_de_quien_lo_busca",
+        "notas":              "observaciones",
+        "reportero_nombre":   "encontrado_por",
+        "reportero_telefono": "telefono_quien_encuentra",
+    }
+
+    def transform_record(self, raw: dict) -> dict:
+        raw["_id"] = f"aquiestoy:{raw.get('id', '')}"
+        return raw
+
     custom_settings = {
         "DOWNLOAD_DELAY": 0.5,
         "RANDOMIZE_DOWNLOAD_DELAY": True,

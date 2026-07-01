@@ -19,8 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.create_table(
         "personas",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False,
-                  server_default=sa.text("gen_random_uuid()")),
+        sa.Column("id", sa.String(), nullable=False),
         # Identificación
         sa.Column("nombre", sa.String(512), nullable=True),
         sa.Column("cedula", sa.String(20), nullable=True),

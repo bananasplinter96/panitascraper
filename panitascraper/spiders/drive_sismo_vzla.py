@@ -36,6 +36,7 @@ y no se procesan aquí.
 """
 
 import csv
+import hashlib
 import io
 import logging
 from typing import AsyncIterator, Generator
@@ -106,34 +107,55 @@ def _parse_csv(text: str) -> list[dict]:
 class DriveSismoVzlaSpider(BaseSpider):
     name = "drive_sismo_vzla"
     field_map = {
-        "nombre":       "APELLIDO(S)",
-        "cedula":       "CEDULA/ID",
-        "edad":         "EDAD",
-        "hospital":     "HOSPITAL/CENTRO",
-        "ciudad":       "AREA/ZONA",
-        "tipo_reporte": "ESTADO/CONDICION",
-        "condicion":    "DIAGNOSTICO/SERVICIO",
-        "estado":       "ESTADO/CONDICION",
-        "notas":        "COMENTARIOS",
+        "id":              "_id",
+        "nombre":          "_nombre",
+        "cedula":          "_cedula",
+        "edad":            "_edad",
+        "sexo":            "_sexo",
+        "hospital":        "_hospital",
+        "cama_sala":       "_cama_sala",
+        "ciudad":          "_ciudad",
+        "condicion":       "_condicion",
+        "tipo_reporte":    "_tipo_reporte",
+        "estado":          "_tipo_reporte",
+        "contacto_familiar": "_familiar",
+        "notas":           "_notas",
     }
 
     def transform_record(self, raw: dict) -> dict:
-        # Unifica clave con y sin acentos (CSV llega con encoding variable)
-        for src, dst in [
-            ("APELLIDO(S)", "APELLIDO(S)"),
-            ("NOMBRE(S)", "NOMBRE(S)"),
-        ]:
-            pass
-        apellidos = raw.get("APELLIDO(S)", raw.get("APELLIDOS", "")).strip()
-        nombres   = raw.get("NOMBRE(S)",   raw.get("NOMBRES", "")).strip()
-        if apellidos and nombres:
-            raw["APELLIDO(S)"] = f"{apellidos} {nombres}"
-        elif nombres:
-            raw["APELLIDO(S)"] = nombres
-        # Normalise cedula key variants
-        for k in list(raw):
-            if "cedula" in k.lower() or "cédula" in k.lower() or "cedula" in k.lower():
-                raw["CEDULA/ID"] = raw.get("CEDULA/ID") or raw[k]
+        def _get(*keys: str) -> str:
+            for k in keys:
+                v = raw.get(k, "").strip()
+                if v:
+                    return v
+            return ""
+
+        # nombre: consolidado uses APELLIDO(S)+NOMBRE(S); lista uses Apellido+Nombre; OCR uses nombre_final
+        apellidos = _get("APELLIDO(S)", "APELLIDOS", "Apellido")
+        nombres   = _get("NOMBRE(S)", "NOMBRES", "Nombre")
+        raw["_nombre"] = f"{apellidos} {nombres}".strip() or _get("nombre_final")
+
+        # cedula: varios formatos con y sin acento
+        raw["_cedula"] = ""
+        for k in raw:
+            kl = k.lower().replace("é", "e")
+            if "cedula" in kl or "c_dula" in kl:
+                raw["_cedula"] = raw.get("_cedula") or raw[k].strip()
+
+        raw["_edad"]         = _get("EDAD", "Edad")
+        raw["_sexo"]         = _get("SEXO", "Sexo")
+        raw["_hospital"]     = _get("HOSPITAL/CENTRO", "Centro donde se encuentra")
+        area_zona = _get("ÁREA/ZONA", "AREA/ZONA")
+        piso_cama = _get("PISO/CAMA")
+        raw["_cama_sala"]    = " | ".join(filter(None, [area_zona, piso_cama]))
+        raw["_ciudad"]       = _get("PROCEDENCIA", "Procedencia")
+        raw["_condicion"]    = _get("DIAGNÓSTICO/SERVICIO", "DIAGNOSTICO/SERVICIO", "Observaciones")
+        raw["_tipo_reporte"] = _get("ESTADO/CONDICIÓN", "ESTADO/CONDICION")
+        raw["_familiar"]     = _get("FAMILIAR")
+        raw["_notas"]        = _get("COMENTARIOS")
+
+        key = f"{raw['_nombre']}:{raw['_cedula']}:{raw.get('_sheet', '')}"
+        raw["_id"] = f"drive_sismo_vzla:{hashlib.md5(key.encode()).hexdigest()[:12]}"
         return raw
 
     allowed_domains = ["docs.google.com", "drive.google.com"]

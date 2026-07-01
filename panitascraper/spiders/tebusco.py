@@ -35,16 +35,26 @@ _HEADERS = {
 class TeBuscoSpider(BaseSpider):
     name = "tebusco"
     field_map = {
-        "nombre":       "nombre",
-        "cedula":       None,
-        "edad":         "edad",
-        "hospital":     "referencia",
-        "ciudad":       None,
-        "tipo_reporte": "estado",
-        "condicion":    None,
-        "estado":       "estadoUb",
-        "notas":        "desc",
+        "id":                "_id",
+        "nombre":            "name",
+        "cedula":            "cid",
+        "tipo_reporte":      "state",
+        "estado":            "state",
+        "ultimo_lugar":      "place",
+        "reportero_nombre":  "by_who",
+        "telefono_familiar": "phone",
+        "notas":             "_notas",
     }
+
+    def transform_record(self, raw: dict) -> dict:
+        raw["_id"] = f"tebusco:{raw.get('uid', '')}"
+        parts = [p for p in (
+            raw.get("msg"),
+            f"Pulsera: {raw['color_pulsera']}" if raw.get("color_pulsera") else None,
+            f"Código pulsera: {raw['codigo_pulsera']}" if raw.get("codigo_pulsera") else None,
+        ) if p]
+        raw["_notas"] = " | ".join(parts)
+        return raw
 
     allowed_domains = ["www.tebusco.app"]
 

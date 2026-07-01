@@ -39,16 +39,21 @@ URL = "https://osirisberbesia.com/pacientesinfo/"
 class OsirisBerbesiaSpider(BaseSpider):
     name = "osirisberbesia"
     field_map = {
-        "nombre":       "nombre",
-        "cedula":       "cedula",
-        "edad":         "edad",
-        "hospital":     "hospital",
-        "tipo_reporte": None,
-        "ciudad":       None,
-        "condicion":    None,
-        "estado":       None,
-        "notas":        "observaciones",
+        "id":                "_id",
+        "nombre":            "nombre",
+        "cedula":            "cedula",
+        "edad":              "edad",
+        "hospital":          "hospital",
+        "telefono_familiar": "telefono",
+        "ciudad":            "direccion",
+        "notas":             "observaciones",
     }
+
+    def transform_record(self, raw: dict) -> dict:
+        import hashlib as _hl
+        key = f"{raw.get('nombre', '')}:{raw.get('cedula', '')}:{raw.get('hospital', '')}"
+        raw["_id"] = f"osirisberbesia:{_hl.md5(key.encode()).hexdigest()[:12]}"
+        return raw
 
     allowed_domains = ["osirisberbesia.com"]
 

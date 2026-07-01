@@ -38,16 +38,30 @@ _HEADERS = {
 class ReencuentroHelpSpider(BaseSpider):
     name = "reencuentrohelp"
     field_map = {
-        "nombre":       "display_name",
-        "cedula":       "cedula",
-        "edad":         None,
-        "hospital":     "location_detail",
-        "ciudad":       "region",
-        "tipo_reporte": "kind",
-        "condicion":    None,
-        "estado":       "status",
-        "notas":        "description",
+        "id":                 "_id",
+        "nombre":             "display_name",
+        "edad":               "_edad",
+        "cedula":             "cedula",
+        "sexo":               "gender",
+        "foto_url":           "photo_url",
+        "tipo_reporte":       "kind",
+        "estado":             "status",
+        "ultimo_lugar":       "region",
+        "descripcion_fisica": "description",
+        "notas":              "_notas",
     }
+
+    def transform_record(self, raw: dict) -> dict:
+        raw["_id"] = f"reencuentro:{raw.get('id', '')}"
+        age_min = raw.get("age_min")
+        age_max = raw.get("age_max")
+        if age_min is not None:
+            raw["_edad"] = (
+                f"{age_min}-{age_max}" if age_max and age_max != age_min else str(age_min)
+            )
+        parts = [p for p in (raw.get("senas"), raw.get("location_detail")) if p]
+        raw["_notas"] = " | ".join(parts)
+        return raw
 
     allowed_domains = ["reencuentro.help", "rwqhswywmdjqyqnpsxqw.supabase.co"]
 

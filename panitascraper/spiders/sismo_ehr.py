@@ -56,16 +56,23 @@ _HEADERS = {
 class SismoEhrSpider(BaseSpider):
     name = "sismo_ehr"
     field_map = {
+        "id":           "_id",
         "nombre":       "nombre",
         "cedula":       "cedula",
         "edad":         "edad",
+        "sexo":         "sexo",
+        "cama_sala":    "servicio",
         "hospital":     "facility_name",
-        "ciudad":       None,
         "tipo_reporte": "estado",
-        "condicion":    "servicio",
+        "condicion":    "estado",
         "estado":       "estado",
-        "notas":        None,
     }
+
+    def transform_record(self, raw: dict) -> dict:
+        import hashlib as _hl
+        key = f"{raw.get('nombre', '')}:{raw.get('cedula', '')}:{raw.get('facility_code', '')}"
+        raw["_id"] = f"sismo_ehr:{_hl.md5(key.encode()).hexdigest()[:12]}"
+        return raw
 
     allowed_domains = ["sismo-ehr.chourio.dev"]
 

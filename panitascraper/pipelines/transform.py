@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from typing import Any
 
@@ -10,15 +11,42 @@ from models import get_engine
 logger = logging.getLogger(__name__)
 
 DEFAULT_STATUS_MAP: dict[str, str] = {
+    # ingresado — actualmente hospitalizado / en tratamiento
     "ingresado": "ingresado", "hospitalizado": "ingresado", "hospitalized": "ingresado",
-    "admitido": "ingresado", "en tratamiento": "ingresado", "internado": "ingresado",
-    "fallecido": "fallecido", "deceased": "fallecido", "muerto": "fallecido",
-    "óbito": "fallecido", "exitus": "fallecido",
-    "desaparecido": "desaparecido", "missing": "desaparecido", "no localizado": "desaparecido",
-    "transferido": "ingresado", "trasladado": "ingresado", "egresado": "ingresado", "alta": "ingresado",
+    "admitido": "ingresado", "admitted": "ingresado", "en tratamiento": "ingresado",
+    "internado": "ingresado", "transferido": "ingresado", "trasladado": "ingresado",
+    "atendido": "ingresado", "atendida": "ingresado",
+    # dado_de_alta — salió del hospital / fue localizado con vida
+    "egresado": "dado_de_alta", "alta": "dado_de_alta", "dado de alta": "dado_de_alta",
+    "discharged": "dado_de_alta", "found": "dado_de_alta", "localizado": "dado_de_alta",
+    "encontrado": "dado_de_alta", "encontrada": "dado_de_alta",
+    "aparecido": "dado_de_alta", "aparecida": "dado_de_alta",
+    "reunited": "dado_de_alta", "believed_alive": "dado_de_alta",
+    # fallecido
+    "fallecido": "fallecido", "fallecida": "fallecido", "deceased": "fallecido",
+    "muerto": "fallecido", "muerta": "fallecido", "óbito": "fallecido",
+    "exitus": "fallecido", "believed_dead": "fallecido", "reportado fallecido": "fallecido",
+    # desaparecido
+    "desaparecido": "desaparecido", "desaparecida": "desaparecido",
+    "missing": "desaparecido", "no localizado": "desaparecido",
+    "sin_contacto": "desaparecido", "buscando": "desaparecido",
+    "sincontacto": "desaparecido", "believed_missing": "desaparecido",
+    "search": "desaparecido", "buscada": "desaparecido", "buscado": "desaparecido",
 }
 
-PERSONA_COLUMNS = {"nombre", "cedula", "edad", "tipo_reporte", "hospital", "ciudad", "condicion", "estado", "notas"}
+SEXO_MAP: dict[str, str] = {
+    "m": "Masculino", "masculino": "Masculino", "male": "Masculino", "hombre": "Masculino",
+    "f": "Femenino", "femenino": "Femenino", "female": "Femenino", "mujer": "Femenino",
+}
+
+PERSONA_COLUMNS = {
+    "id", "tipo_reporte", "nombre", "edad", "cedula", "sexo", "foto_url",
+    "hospital", "ciudad", "cama_sala", "condicion", "contacto_familiar",
+    "ubicacion_cuerpo", "confirmacion_tipo", "confirmacion_detalle",
+    "ultimo_lugar", "ultimo_contacto", "descripcion_fisica", "telefono_familiar",
+    "reportero_nombre", "reportero_telefono", "estado", "notas",
+    "spider_name", "fuente_url",
+}
 
 
 class TransformPipeline:
@@ -51,15 +79,13 @@ class TransformPipeline:
         spider = self.crawler.spider
         field_map = getattr(spider, "field_map", {})
         status_map = {**DEFAULT_STATUS_MAP, **getattr(spider, "status_map", {})}
-        run_id = adapter.get("run_id", "")
         source_url = adapter.get("url", "")
 
         for raw in records:
             if hasattr(spider, "transform_record"):
                 raw = spider.transform_record(raw)
             persona = self._map_fields(raw, field_map)
-            persona = self._normalize_status(persona, status_map)
-            persona = self._add_provenance(persona, source_url, run_id)
+            persona = self._normalize(persona, status_map, spider, source_url)
             self._upsert_persona(persona)
 
         return item
@@ -74,17 +100,30 @@ class TransformPipeline:
                 persona[col] = str(value).strip()
         return persona
 
-    def _normalize_status(self, persona: dict, status_map: dict) -> dict:
+    def _normalize(self, persona: dict, status_map: dict, spider, source_url: str) -> dict:
+        # tipo_reporte
         raw_status = persona.get("tipo_reporte", "")
-        persona["tipo_reporte"] = status_map.get(raw_status.lower(), "ingresado")
+        persona["tipo_reporte"] = status_map.get(raw_status.lower(), "desaparecido")
         if "estado" not in persona:
             persona["estado"] = persona["tipo_reporte"].capitalize()
-        return persona
 
-    def _add_provenance(self, persona: dict, url: str, run_id: str) -> dict:
-        existing = persona.get("notas", "")
-        prov = f"Fuente: {url} | Run: {run_id}"
-        persona["notas"] = f"{existing}; {prov}".lstrip("; ") if existing else prov
+        # sexo
+        if "sexo" in persona:
+            persona["sexo"] = SEXO_MAP.get(persona["sexo"].lower(), persona["sexo"])
+
+        # foto_url: drop base64 data URIs
+        if persona.get("foto_url", "").startswith("data:"):
+            del persona["foto_url"]
+
+        # provenance
+        persona["spider_name"] = spider.name
+        persona["fuente_url"] = persona.get("fuente_url") or source_url
+
+        # id: generate stable hash if not provided by spider
+        if not persona.get("id"):
+            id_src = f"{spider.name}:{persona.get('nombre', '')}:{persona.get('cedula', '')}"
+            persona["id"] = f"{spider.name}:{hashlib.md5(id_src.encode()).hexdigest()[:12]}"
+
         return persona
 
     def _upsert_persona(self, persona: dict) -> None:
@@ -96,13 +135,24 @@ class TransformPipeline:
 
         with Session(self.engine) as session:
             try:
-                cedula = persona.get("cedula", "").strip()
-                nombre = persona.get("nombre", "").strip()
-                hospital = persona.get("hospital", "").strip()
+                provided_id = safe.get("id")
+                cedula = (safe.get("cedula") or "").strip()
+                nombre = (safe.get("nombre") or "").strip()
+                hospital = (safe.get("hospital") or "").strip()
                 existing_id = None
 
-                if cedula:
-                    row = session.execute(text("SELECT id FROM personas WHERE cedula = :c LIMIT 1"), {"c": cedula}).fetchone()
+                # Lookup order: provided id → cedula → nombre+hospital
+                if provided_id:
+                    row = session.execute(
+                        text("SELECT id FROM personas WHERE id = :i LIMIT 1"), {"i": provided_id}
+                    ).fetchone()
+                    if row:
+                        existing_id = row[0]
+
+                if not existing_id and cedula:
+                    row = session.execute(
+                        text("SELECT id FROM personas WHERE cedula = :c LIMIT 1"), {"c": cedula}
+                    ).fetchone()
                     if row:
                         existing_id = row[0]
 
@@ -115,8 +165,13 @@ class TransformPipeline:
                         existing_id = row[0]
 
                 if existing_id:
-                    set_clauses = ", ".join(f"{col} = :{col}" for col in safe) + ", updated_at = NOW()"
-                    session.execute(text(f"UPDATE personas SET {set_clauses} WHERE id = :id"), {**safe, "id": existing_id})
+                    update_safe = {k: v for k, v in safe.items() if k != "id"}
+                    if update_safe:
+                        set_clauses = ", ".join(f"{col} = :{col}" for col in update_safe) + ", updated_at = NOW()"
+                        session.execute(
+                            text(f"UPDATE personas SET {set_clauses} WHERE id = :id"),
+                            {**update_safe, "id": existing_id},
+                        )
                 else:
                     cols = ", ".join(safe.keys())
                     vals = ", ".join(f":{k}" for k in safe)

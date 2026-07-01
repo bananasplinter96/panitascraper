@@ -38,16 +38,22 @@ PAGE_SIZE = 100
 class LocalizadosVenezuelaSpider(BaseSpider):
     name = "localizadosvenezuela"
     field_map = {
-        "nombre":       "nombreCompleto",
-        "cedula":       None,
-        "edad":         None,
-        "hospital":     "nombre",
-        "ciudad":       None,
-        "tipo_reporte": "condicion",
-        "condicion":    "condicion",
-        "estado":       "condicion",
-        "notas":        "observaciones",
+        "id":                "_id",
+        "nombre":            "nombreCompleto",
+        "edad":              "edad",
+        "cedula":            "cedula",
+        "condicion":         "condicion",
+        "ciudad":            "direccion",
+        "hospital":          "lugarNombre",
+        "tipo_reporte":      "condicion",
+        "estado":            "condicion",
+        "notas":             "observaciones",
+        "telefono_familiar": "telefono",
     }
+
+    def transform_record(self, raw: dict) -> dict:
+        raw["_id"] = f"localizados:{raw.get('slug', '')}"
+        return raw
 
     allowed_domains = ["localizadosvenezuela.com"]
 

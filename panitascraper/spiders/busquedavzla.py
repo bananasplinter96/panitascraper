@@ -25,16 +25,31 @@ API_URL = "https://busquedavzla.netlify.app/api/reports"
 class BusquedaVzlaSpider(BaseSpider):
     name = "busquedavzla"
     field_map = {
-        "nombre":       "nombre",
-        "cedula":       "cedula",
-        "edad":         "edad",
-        "hospital":     "hospital",
-        "ciudad":       "ciudad",
-        "tipo_reporte": "estado",
-        "condicion":    "condicion",
-        "estado":       "estado",
-        "notas":        "notas",
+        "id":                 "_id",
+        "nombre":             "nombre",
+        "edad":               "edad",
+        "tipo_reporte":       "estado",
+        "estado":             "estado",
+        "descripcion_fisica": "desc",
+        "ultimo_lugar":       "estadoUb",
+        "ultimo_contacto":    "visto",
+        "foto_url":           "_foto_url",
+        "reportero_nombre":   "repNombre",
+        "reportero_telefono": "repTel",
+        "notas":              "_notas",
     }
+
+    def transform_record(self, raw: dict) -> dict:
+        raw["_id"] = f"busquedavzla:{raw.get('id', '')}"
+        foto = raw.get("foto", "")
+        raw["_foto_url"] = "" if foto.startswith("data:") else foto
+        parts = [p for p in (
+            f"Apodo: {raw['apodo']}" if raw.get("apodo") else None,
+            raw.get("referencia"),
+            raw.get("notas"),
+        ) if p]
+        raw["_notas"] = " | ".join(parts)
+        return raw
 
     allowed_domains = ["busquedavzla.netlify.app"]
 

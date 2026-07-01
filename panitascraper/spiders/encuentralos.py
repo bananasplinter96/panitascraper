@@ -27,6 +27,28 @@ class EncuentralosSpider(BaseSpider):
     name = "encuentralos"
     allowed_domains = ["encuentralos.tecnosoft.dev"]
 
+    field_map = {
+        "id":                 "_id",
+        "nombre":             "nombre",
+        "edad":               "edad",
+        "cedula":             "cedula",
+        "sexo":               "sexo",
+        "foto_url":           "foto",
+        "tipo_reporte":       "estado",
+        "estado":             "estado",
+        "ultimo_lugar":       "ultima_ubicacion",
+        "telefono_familiar":  "reporta_contacto",
+        "descripcion_fisica": "descripcion",
+        "reportero_nombre":   "pv_por",
+        "reportero_telefono": "pv_contacto",
+        "hospital":           "pv_lugar",
+        "condicion":          "pv_salud",
+    }
+
+    def transform_record(self, raw: dict) -> dict:
+        raw["_id"] = f"encuentralos:{raw.get('id', '')}"
+        return raw
+
     custom_settings = {
         "DOWNLOAD_DELAY": 0.5,
         "RANDOMIZE_DOWNLOAD_DELAY": True,
