@@ -9,5 +9,8 @@ scraper/logs/
 logs/
 *.log
 
+# Environment
+.env
+
 # Datos locales de MinIO (si mapeas carpetas locales)
 .minio_data/

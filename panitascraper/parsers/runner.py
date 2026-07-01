@@ -50,10 +50,10 @@ def run(spider_filter: str | None = None, dry_run: bool = False):
     from minio import Minio
     import psycopg2
 
-    db_url = os.environ.get("DATABASE_URL", "postgresql://panitas:panitas@localhost:5432/panitasmap")
+    db_url = os.environ.get("DATABASE_URL", "")
     minio_endpoint = os.environ.get("MINIO_ENDPOINT", "localhost:9000")
-    minio_access = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
-    minio_secret = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
+    minio_access = os.environ.get("MINIO_ACCESS_KEY", "")
+    minio_secret = os.environ.get("MINIO_SECRET_KEY", "")
     minio_secure = os.environ.get("MINIO_SECURE", "false").lower() == "true"
     bucket = os.environ.get("STORAGE_BUCKET", "panitas-scraper")
 

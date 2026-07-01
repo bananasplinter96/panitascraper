@@ -4,13 +4,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: panitas
-      POSTGRES_PASSWORD: panitas
-      POSTGRES_DB: panitasmap
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "panitas", "-d", "panitasmap"]
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,8 +29,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -50,14 +50,14 @@ services:
     restart: unless-stopped
     command: celery -A tasks worker --loglevel=info --concurrency=1
     environment:
-      DATABASE_URL: postgresql://panitas:panitas@db:5432/panitasmap
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379/0
       STORAGE_BACKEND: minio
-      STORAGE_BUCKET: panitas-scraper
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-      MINIO_SECURE: "false"
+      STORAGE_BUCKET: ${STORAGE_BUCKET}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_SECURE: ${MINIO_SECURE}
       SCRAPER_LOG_DIR: /app/logs
       PARSER_LOG_DIR: /app/logs/parsers
       PLAYWRIGHT_ENABLED: "false"
@@ -79,7 +79,7 @@ services:
     restart: unless-stopped
     command: celery -A tasks beat --loglevel=info
     environment:
-      DATABASE_URL: postgresql://panitas:panitas@db:5432/panitasmap
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379/0
     depends_on:
       db:

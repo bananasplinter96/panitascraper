@@ -26,7 +26,7 @@ app.config_from_object("celeryconfig")
 logger = logging.getLogger(__name__)
 crochet_setup()
 
-_DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://panitas:panitas@db:5432/panitasmap")
+_DATABASE_URL = os.environ.get("DATABASE_URL", "")
 _SCRAPER_LOG_DIR = os.environ.get("SCRAPER_LOG_DIR", "/app/logs")
 
 
