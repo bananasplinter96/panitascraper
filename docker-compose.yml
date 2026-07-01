@@ -1,22 +1,5 @@
 services:
 
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: panitas
-      POSTGRES_PASSWORD: panitas
-      POSTGRES_DB: panitasmap
-    ports:
-      - "5433:5432"
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "panitas", "-d", "panitasmap"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   minio:
     image: minio/minio:latest
     restart: unless-stopped
@@ -36,5 +19,4 @@ services:
       retries: 5
 
 volumes:
-  pg_data:
   minio_data:
