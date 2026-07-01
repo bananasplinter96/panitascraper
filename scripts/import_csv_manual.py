@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models import get_engine
+from panitascraper.pipelines.transform import puede_actualizar_estado
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LA_GUAIRA_RAW_PATH = os.path.join(SCRIPT_DIR, "la_guaira_raw.txt")
@@ -107,23 +108,23 @@ def upsert_persona(session: Session, persona: dict) -> None:
     # otros spiders (encuentralos, ubicame, etc.) para la misma persona —
     # cada spider guardó su propia fila para la misma persona real.
     #
-    # Regla: cualquier fila existente que siga en 'desaparecido' se
-    # ACTUALIZA con el nuevo estado (ej. dado_de_alta), guardando el
-    # estado anterior en notas para auditoría. Las filas que ya estaban
-    # dado_de_alta/ingresado/fallecido no se tocan (ya reflejan la
-    # información correcta, no se sobreescriben con datos más pobres).
+    # Regla: se aplica la matriz de transición de estado (puede_actualizar_estado)
+    # a cada fila existente con ese nombre. Se guarda el estado anterior en
+    # notas para auditoría cuando cambia.
     if not existing_id and nombre:
         rows = session.execute(
             text("SELECT id, tipo_reporte, notas FROM personas WHERE nombre ILIKE :n"),
             {"n": nombre},
         ).fetchall()
         if rows:
+            nuevo_tipo = persona.get("tipo_reporte")
             for row_id, tipo_actual, notas_actual in rows:
-                if tipo_actual != "desaparecido":
-                    continue  # ya refleja hallazgo/fallecimiento, no tocar
+                if not puede_actualizar_estado(tipo_actual, nuevo_tipo):
+                    continue  # transición bloqueada por la matriz, no tocar
                 update_safe = {k: v for k, v in persona.items() if k != "id"}
+                nota_previa = f"[Estado anterior: {tipo_actual}] " if tipo_actual != nuevo_tipo else ""
                 update_safe["notas"] = (
-                    "[Estado anterior: desaparecido] " + (update_safe.get("notas") or "")
+                    nota_previa + (update_safe.get("notas") or "")
                 ).strip() + (f" | {notas_actual}" if notas_actual else "")
                 set_clauses = ", ".join(f"{col} = :{col}" for col in update_safe) + ", updated_at = NOW()"
                 session.execute(
@@ -133,6 +134,15 @@ def upsert_persona(session: Session, persona: dict) -> None:
             return  # ya se manejó por nombre (actualizado o dejado igual) — no insertar duplicado
 
     if existing_id:
+        actual_row = session.execute(
+            text("SELECT tipo_reporte FROM personas WHERE id = :id"), {"id": existing_id}
+        ).fetchone()
+        actual_tipo = actual_row[0] if actual_row else None
+        nuevo_tipo = persona.get("tipo_reporte")
+
+        if not puede_actualizar_estado(actual_tipo, nuevo_tipo):
+            return  # transición bloqueada por la matriz, no actualizar
+
         update_safe = {k: v for k, v in persona.items() if k != "id"}
         set_clauses = ", ".join(f"{col} = :{col}" for col in update_safe) + ", updated_at = NOW()"
         session.execute(

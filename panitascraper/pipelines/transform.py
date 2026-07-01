@@ -39,6 +39,27 @@ SEXO_MAP: dict[str, str] = {
     "f": "Femenino", "femenino": "Femenino", "female": "Femenino", "mujer": "Femenino",
 }
 
+def puede_actualizar_estado(actual: str | None, nuevo: str | None) -> bool:
+    """
+    Matriz de prioridad de transición de estado. Evita que una importación
+    (manual o de un spider) degrade o corrompa el estado de una persona:
+
+      - fallecido            -> nunca se toca (requiere revisión manual)
+      - desaparecido         -> siempre se puede actualizar (cualquier dato ayuda)
+      - ingresado/dado_de_alta -> NO se puede volver a desaparecido (regresión inválida)
+      - cualquier otra combinación (ingresado<->dado_de_alta<->fallecido) -> se permite
+    """
+    if not actual:
+        return True
+    if actual == "fallecido":
+        return False
+    if actual == "desaparecido":
+        return True
+    if nuevo == "desaparecido":
+        return False
+    return True
+
+
 PERSONA_COLUMNS = {
     "id", "tipo_reporte", "nombre", "edad", "cedula", "sexo", "foto_url",
     "hospital", "ciudad", "cama_sala", "condicion", "contacto_familiar",
@@ -165,13 +186,25 @@ class TransformPipeline:
                         existing_id = row[0]
 
                 if existing_id:
-                    update_safe = {k: v for k, v in safe.items() if k != "id"}
-                    if update_safe:
-                        set_clauses = ", ".join(f"{col} = :{col}" for col in update_safe) + ", updated_at = NOW()"
-                        session.execute(
-                            text(f"UPDATE personas SET {set_clauses} WHERE id = :id"),
-                            {**update_safe, "id": existing_id},
+                    actual_row = session.execute(
+                        text("SELECT tipo_reporte FROM personas WHERE id = :id"), {"id": existing_id}
+                    ).fetchone()
+                    actual_tipo = actual_row[0] if actual_row else None
+                    nuevo_tipo = safe.get("tipo_reporte")
+
+                    if not puede_actualizar_estado(actual_tipo, nuevo_tipo):
+                        logger.info(
+                            "Transición de estado bloqueada (%s -> %s) para id=%s",
+                            actual_tipo, nuevo_tipo, existing_id,
                         )
+                    else:
+                        update_safe = {k: v for k, v in safe.items() if k != "id"}
+                        if update_safe:
+                            set_clauses = ", ".join(f"{col} = :{col}" for col in update_safe) + ", updated_at = NOW()"
+                            session.execute(
+                                text(f"UPDATE personas SET {set_clauses} WHERE id = :id"),
+                                {**update_safe, "id": existing_id},
+                            )
                 else:
                     cols = ", ".join(safe.keys())
                     vals = ", ".join(f":{k}" for k in safe)
