@@ -104,21 +104,33 @@ def upsert_persona(session: Session, persona: dict) -> None:
     # Fallback: match por nombre solo (sin cédula ni hospital exacto).
     # Estos registros manuales no traen cédula, y el "hospital"/centro que
     # les asignamos rara vez coincide textualmente con lo que ya scrapearon
-    # otros spiders (encuentralos, ubicame, etc.) para la misma persona.
-    # Si YA existe alguien con ese nombre marcado dado_de_alta/ingresado/
-    # fallecido, esa info ya está capturada -> no insertar duplicado.
-    # Si TODAS las coincidencias existentes siguen en 'desaparecido',
-    # sí vale la pena actualizar (esta persona apareció con vida).
+    # otros spiders (encuentralos, ubicame, etc.) para la misma persona —
+    # cada spider guardó su propia fila para la misma persona real.
+    #
+    # Regla: cualquier fila existente que siga en 'desaparecido' se
+    # ACTUALIZA con el nuevo estado (ej. dado_de_alta), guardando el
+    # estado anterior en notas para auditoría. Las filas que ya estaban
+    # dado_de_alta/ingresado/fallecido no se tocan (ya reflejan la
+    # información correcta, no se sobreescriben con datos más pobres).
     if not existing_id and nombre:
         rows = session.execute(
-            text("SELECT id, tipo_reporte FROM personas WHERE nombre ILIKE :n"),
+            text("SELECT id, tipo_reporte, notas FROM personas WHERE nombre ILIKE :n"),
             {"n": nombre},
         ).fetchall()
         if rows:
-            ya_capturado = any(r[1] in ("dado_de_alta", "ingresado", "fallecido") for r in rows)
-            if ya_capturado:
-                return  # info ya reflejada por otro spider, no duplicar
-            existing_id = rows[0][0]
+            for row_id, tipo_actual, notas_actual in rows:
+                if tipo_actual != "desaparecido":
+                    continue  # ya refleja hallazgo/fallecimiento, no tocar
+                update_safe = {k: v for k, v in persona.items() if k != "id"}
+                update_safe["notas"] = (
+                    "[Estado anterior: desaparecido] " + (update_safe.get("notas") or "")
+                ).strip() + (f" | {notas_actual}" if notas_actual else "")
+                set_clauses = ", ".join(f"{col} = :{col}" for col in update_safe) + ", updated_at = NOW()"
+                session.execute(
+                    text(f"UPDATE personas SET {set_clauses} WHERE id = :rid"),
+                    {**update_safe, "rid": row_id},
+                )
+            return  # ya se manejó por nombre (actualizado o dejado igual) — no insertar duplicado
 
     if existing_id:
         update_safe = {k: v for k, v in persona.items() if k != "id"}
