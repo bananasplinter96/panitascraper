@@ -2,7 +2,7 @@
 Importador manual de listas de sobrevivientes/ingresados (PDF -> DB).
 
 Uso:
-    DATABASE_URL=postgresql://panitas:panitas@localhost:5433/panitasmap python scripts/import_csv_manual.py
+    DATABASE_URL=postgresql://<user>:<pass>@localhost:5433/panitasmap python scripts/import_csv_manual.py
 
 Inserta/actualiza registros en la tabla `personas` con el mismo criterio de
 dedup que usa el pipeline del scraper (id -> cedula -> nombre+hospital).
@@ -45,9 +45,9 @@ def parse_la_guaira_raw(path: str) -> list[tuple[str, str, str]]:
             rows.append((nombre.strip(), centro.strip(), fecha))
     return rows
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://panitas:panitas@localhost:5433/panitasmap"
-)
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+if not DATABASE_URL:
+    sys.exit("ERROR: define DATABASE_URL (ver .env.example)")
 SPIDER_NAME = "import_manual_20260628"
 
 # -------------------------------------------------------------------

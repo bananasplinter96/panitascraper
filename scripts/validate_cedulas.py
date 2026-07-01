@@ -11,7 +11,7 @@ No borra ni oculta nada — solo marca para que el equipo revise los
 'no_coincide' manualmente.
 
 Uso:
-    DATABASE_URL=postgresql://panitas:panitas@localhost:5433/panitasmap \
+    DATABASE_URL=postgresql://<user>:<pass>@localhost:5433/panitasmap \
     python scripts/validate_cedulas.py
 """
 
@@ -28,9 +28,9 @@ from sqlalchemy.orm import Session
 from models import get_engine
 from fonetica_es import comparar
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://panitas:panitas@localhost:5433/panitasmap"
-)
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+if not DATABASE_URL:
+    sys.exit("ERROR: define DATABASE_URL (ver .env.example)")
 SQLITE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "panitascraper", "spiders", "datos", "personas.db",

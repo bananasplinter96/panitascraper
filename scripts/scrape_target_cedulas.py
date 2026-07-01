@@ -4,7 +4,7 @@ cedula.com.ve) SOLO para las cédulas que ya existen en nuestra tabla
 `personas`, en vez de recorrer el rango completo V-1..30M.
 
 Uso:
-    DATABASE_URL=postgresql://panitas:panitas@localhost:5433/panitasmap \
+    DATABASE_URL=postgresql://<user>:<pass>@localhost:5433/panitasmap \
     python scripts/scrape_target_cedulas.py [--limit N] [--resume]
 
 Guarda resultados en panitascraper/spiders/datos/personas.db (mismo
@@ -29,9 +29,9 @@ from sqlalchemy.orm import Session
 
 from models import get_engine
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://panitas:panitas@localhost:5433/panitasmap"
-)
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+if not DATABASE_URL:
+    sys.exit("ERROR: define DATABASE_URL (ver .env.example)")
 SQLITE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "panitascraper", "spiders", "datos", "personas.db",

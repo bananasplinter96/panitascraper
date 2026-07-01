@@ -54,7 +54,7 @@ completo, ambos conviven sin conflicto (mismo `PRIMARY KEY cedula`).
 # 1. Aplicar migración (una sola vez)
 .venv\Scripts\Activate.ps1
 docker compose up -d db
-$env:DATABASE_URL="postgresql://panitas:panitas@localhost:5433/panitasmap"
+$env:DATABASE_URL="postgresql://<user>:<pass>@localhost:5433/panitasmap"
 alembic upgrade head
 
 # 2. Probar con pocas cédulas
@@ -82,7 +82,7 @@ scp alembic/versions/0004_add_missing_persona_columns.py \
 ssh ubuntu@<IP_VM>
 cd ~/panitascraper
 source .venv/bin/activate
-export DATABASE_URL=postgresql://panitas:panitas@localhost:5432/panitasmap  # ajustar host/puerto real
+export DATABASE_URL=postgresql://<user>:<pass>@localhost:5432/panitasmap  # ajustar host/puerto real
 alembic upgrade head
 
 # 3. Scraping dirigido — en producción hay miles de cédulas (no 18 como en el
