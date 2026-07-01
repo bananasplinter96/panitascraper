@@ -101,6 +101,25 @@ def upsert_persona(session: Session, persona: dict) -> None:
         if row:
             existing_id = row[0]
 
+    # Fallback: match por nombre solo (sin cédula ni hospital exacto).
+    # Estos registros manuales no traen cédula, y el "hospital"/centro que
+    # les asignamos rara vez coincide textualmente con lo que ya scrapearon
+    # otros spiders (encuentralos, ubicame, etc.) para la misma persona.
+    # Si YA existe alguien con ese nombre marcado dado_de_alta/ingresado/
+    # fallecido, esa info ya está capturada -> no insertar duplicado.
+    # Si TODAS las coincidencias existentes siguen en 'desaparecido',
+    # sí vale la pena actualizar (esta persona apareció con vida).
+    if not existing_id and nombre:
+        rows = session.execute(
+            text("SELECT id, tipo_reporte FROM personas WHERE nombre ILIKE :n"),
+            {"n": nombre},
+        ).fetchall()
+        if rows:
+            ya_capturado = any(r[1] in ("dado_de_alta", "ingresado", "fallecido") for r in rows)
+            if ya_capturado:
+                return  # info ya reflejada por otro spider, no duplicar
+            existing_id = rows[0][0]
+
     if existing_id:
         update_safe = {k: v for k, v in persona.items() if k != "id"}
         set_clauses = ", ".join(f"{col} = :{col}" for col in update_safe) + ", updated_at = NOW()"
