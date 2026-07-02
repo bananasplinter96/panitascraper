@@ -23,9 +23,20 @@ expuesto en el campo nombre):
      separar en varias personas y no hay forma confiable de hacerlo
      sin revisión humana.
 
+  4. canonico_sospechoso: dentro de variantes_ocr, casos donde "tomar
+     la primera parte" da un resultado sin letras suficientes para ser
+     un nombre (ej. "R / N Parra" -> canónico "R", perdiendo el
+     apellido real; probablemente "R/N" = abreviatura médica de
+     "Recién Nacido" partida por el separador), o donde la primera
+     parte trae una marca explícita de incertidumbre como
+     "[Ilegible]" (ej. "Alexey [Ilegible] / Jose Cleonir Marley" ->
+     canónico "Alexey [Ilegible]", descartando el nombre legible). NO
+     se repara automáticamente — requiere decidir a mano cuál parte es
+     el nombre real.
+
 Por defecto solo reporta. Usa --apply para aplicar la reparación
-automática del grupo 1 únicamente. Los grupos 2 y 3 nunca se tocan
-por este script, sin importar --apply.
+automática del grupo 1 únicamente (excluyendo canonico_sospechoso).
+Los demás grupos nunca se tocan por este script, sin importar --apply.
 
 Uso:
     DATABASE_URL=postgresql://<user>:<pass>@localhost:5432/panitasmap \
@@ -67,6 +78,22 @@ def dividir_variantes(nombre: str) -> tuple[str, list[str]]:
     return partes[0], partes[1:]
 
 
+_LETRAS_RE = re.compile(r"[^A-Za-zÀ-ÿ]")
+
+
+_ILEGIBLE_RE = re.compile(r"ilegible", re.IGNORECASE)
+
+
+def canonico_sospechoso(canonico: str) -> bool:
+    """True si el candidato a nombre canónico tiene muy pocas letras
+    para ser un nombre real (ej. 'R', 'P.2') — señal de que la parte
+    antes del '/' era una abreviatura/anotación, no un nombre — o si
+    contiene una marca explícita de incertidumbre como '[Ilegible]'."""
+    if _ILEGIBLE_RE.search(canonico):
+        return True
+    return len(_LETRAS_RE.sub("", canonico)) <= 2
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true", help="Aplicar la reparación automática del grupo 'variantes_ocr'")
@@ -78,9 +105,19 @@ def main():
             "SELECT id, nombre, notas FROM personas WHERE nombre LIKE '%/%'"
         )).fetchall()
 
-        grupos: dict[str, list] = {"variantes_ocr": [], "notas_administrativas": [], "mensaje_multiple": []}
+        grupos: dict[str, list] = {
+            "variantes_ocr": [],
+            "notas_administrativas": [],
+            "mensaje_multiple": [],
+            "canonico_sospechoso": [],
+        }
         for persona_id, nombre, notas in rows:
-            grupos[clasificar(nombre)].append((persona_id, nombre, notas))
+            grupo = clasificar(nombre)
+            if grupo == "variantes_ocr":
+                canonico, _ = dividir_variantes(nombre)
+                if canonico_sospechoso(canonico):
+                    grupo = "canonico_sospechoso"
+            grupos[grupo].append((persona_id, nombre, notas))
 
         print(f"Total con '/' en el nombre: {len(rows)}")
         for grupo, items in grupos.items():
@@ -93,6 +130,11 @@ def main():
         print("\n--- Muestra: mensaje_multiple (revisión manual, NO se toca) ---")
         for persona_id, nombre, _ in grupos["mensaje_multiple"][:10]:
             print(f"  id={persona_id}\n    nombre='{nombre[:150]}...'")
+
+        print("\n--- Muestra: canonico_sospechoso (revisión manual, NO se toca) ---")
+        for persona_id, nombre, _ in grupos["canonico_sospechoso"][:10]:
+            canonico, variantes = dividir_variantes(nombre)
+            print(f"  id={persona_id}\n    nombre='{nombre}'\n    canónico descartado por sospechoso='{canonico}'")
 
         print("\n--- Muestra: variantes_ocr (se repara automáticamente con --apply) ---")
         for persona_id, nombre, _ in grupos["variantes_ocr"][:10]:
@@ -115,8 +157,10 @@ def main():
                 aplicadas += 1
             session.commit()
             print(f"Reparadas {aplicadas} filas de 'variantes_ocr'.")
-            print(f"'notas_administrativas' ({len(grupos['notas_administrativas'])}) y "
-                  f"'mensaje_multiple' ({len(grupos['mensaje_multiple'])}) NO se tocaron — requieren revisión manual.")
+            print(f"'notas_administrativas' ({len(grupos['notas_administrativas'])}), "
+                  f"'mensaje_multiple' ({len(grupos['mensaje_multiple'])}) y "
+                  f"'canonico_sospechoso' ({len(grupos['canonico_sospechoso'])}) "
+                  f"NO se tocaron — requieren revisión manual.")
         else:
             print("\n(Modo reporte — no se modificó nada. Usa --apply para reparar 'variantes_ocr'.)")
 
