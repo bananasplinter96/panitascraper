@@ -101,19 +101,28 @@ def main():
         total_personas = session.execute(
             text("SELECT COUNT(*) FROM personas WHERE nombre IS NOT NULL AND nombre != ''")
         ).scalar()
+        con_cedula = session.execute(
+            text(r"SELECT COUNT(*) FROM personas WHERE cedula IS NOT NULL AND length(regexp_replace(cedula, '[^0-9]', '', 'g')) BETWEEN 6 AND 9")
+        ).scalar()
+        print(f"Cobertura de cédula: {con_cedula}/{total_personas} ({100*con_cedula/total_personas:.1f}%) "
+              f"— el tier ALTA depende de esto, así que una cobertura baja limita cuánto puede ayudar.")
 
-        print("Generando candidatos fonéticos (mismo algoritmo que data_quality_report.py sección 4)...")
+        print("\nGenerando candidatos fonéticos (mismo algoritmo que data_quality_report.py sección 4)...")
         candidatos = generar_candidatos_foneticos(session)
         print(f"\nTotal personas: {total_personas}")
         print(f"Total candidatos a duplicado: {len(candidatos)}")
 
         por_tier: dict[str, list] = {"ALTA": [], "MEDIA": [], "BAJA": []}
-        uf = UnionFind()
+        uf_alta = UnionFind()
+        uf_alta_media = UnionFind()
         for score, id_a, nom_a, id_b, nom_b, edad_a, edad_b, hosp_a, hosp_b, ced_a, ced_b in candidatos:
             tier = clasificar_confianza(score, edad_a, edad_b, ced_a, ced_b)
             por_tier[tier].append((score, id_a, nom_a, id_b, nom_b, edad_a, edad_b, ced_a, ced_b))
             if tier == "ALTA":
-                uf.union(id_a, id_b)
+                uf_alta.union(id_a, id_b)
+                uf_alta_media.union(id_a, id_b)
+            elif tier == "MEDIA":
+                uf_alta_media.union(id_a, id_b)
 
         print("\n=== Distribución por nivel de confianza ===")
         for tier in ("ALTA", "MEDIA", "BAJA"):
@@ -131,21 +140,21 @@ def main():
             print(f"    A: id={id_a} nombre='{nom_a}' edad={edad_a}")
             print(f"    B: id={id_b} nombre='{nom_b}' edad={edad_b}")
 
-        # Estimación de personas únicas: cada persona en algún cluster ALTA
-        # cuenta una vez por cluster; el resto (no involucradas en ningún
-        # match ALTA) cuentan cada una individualmente.
-        ids_en_alta = set(uf.padre.keys())
-        clusters_alta = len({uf.find(x) for x in ids_en_alta})
-        personas_fuera_de_alta = total_personas - len(ids_en_alta)
-        estimado_unico = clusters_alta + personas_fuera_de_alta
+        def estimar(uf: UnionFind, etiqueta: str):
+            ids_en_uf = set(uf.padre.keys())
+            clusters = len({uf.find(x) for x in ids_en_uf})
+            fuera = total_personas - len(ids_en_uf)
+            estimado = clusters + fuera
+            print(f"\n=== Estimación de personas únicas tras fusionar {etiqueta} ===")
+            print(f"  Personas involucradas en al menos un match: {len(ids_en_uf)}")
+            print(f"  Esas se agrupan en: {clusters} clusters (personas únicas)")
+            print(f"  Personas sin ningún match en este tier (cuentan individualmente): {fuera}")
+            print(f"  TOTAL estimado de personas únicas: {estimado}")
 
-        print("\n=== Estimación de personas únicas tras fusionar solo el tier ALTA ===")
-        print(f"  Personas involucradas en al menos un match ALTA: {len(ids_en_alta)}")
-        print(f"  Esas se agrupan en: {clusters_alta} clusters (personas únicas)")
-        print(f"  Personas sin ningún match ALTA (cuentan individualmente): {personas_fuera_de_alta}")
-        print(f"  TOTAL estimado de personas únicas (cota superior conservadora): {estimado_unico}")
-        print(f"  (de {total_personas} filas totales — una fusión también del tier MEDIA bajaría más este número,")
-        print(f"   pero con más riesgo de fusionar por error a dos personas distintas)")
+        estimar(uf_alta, "solo el tier ALTA (más conservador, requiere cédula coincidente)")
+        estimar(uf_alta_media, "ALTA + MEDIA (score fonético perfecto + edad idéntica — más agresivo, más riesgo de falso positivo)")
+        print(f"\n(de {total_personas} filas totales — BAJA queda fuera de ambas estimaciones porque el nombre solo,")
+        print(f" sin edad/cédula que coincida exactamente, no es evidencia suficiente para fusionar sin revisión humana)")
 
 
 if __name__ == "__main__":
