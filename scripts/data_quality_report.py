@@ -135,13 +135,23 @@ def _clave_bloque(nombre: str, umbral_division: int, conteo_primer_token: dict[s
     return f"{primer}:{segundo_prefijo}"
 
 
-def reporte_duplicados_foneticos(session: Session, limite_reporte: int = 40, umbral_division: int = 60):
-    print("\n=== 4. Posibles duplicados por nombre fonéticamente similar (no exacto) ===")
+def generar_candidatos_foneticos(session: Session, umbral_division: int = 60, imprimir_progreso: bool = True):
+    """
+    Genera la lista completa de pares candidatos a duplicado por nombre
+    fonéticamente similar, incluyendo cédula (además de edad/hospital,
+    que ya se usaban como filtro). Devuelve tuplas:
+    (score, id_a, nom_a, id_b, nom_b, edad_a, edad_b, hosp_a, hosp_b, ced_a, ced_b)
+
+    Extraído de reporte_duplicados_foneticos() para poder reutilizar la
+    misma lógica de bloqueo/comparación en duplicate_confidence_report.py
+    sin duplicar el algoritmo.
+    """
     rows = session.execute(text("""
-        SELECT id, nombre, edad, hospital, ciudad FROM personas
+        SELECT id, nombre, edad, hospital, ciudad, cedula FROM personas
         WHERE nombre IS NOT NULL AND nombre != ''
     """)).fetchall()
-    print(f"Personas con nombre a analizar: {len(rows)}")
+    if imprimir_progreso:
+        print(f"Personas con nombre a analizar: {len(rows)}")
 
     # Primera pasada: contar cuántas personas comparten cada primer token,
     # para saber a cuáles hay que aplicarles el segundo nivel de bloqueo.
@@ -159,14 +169,15 @@ def reporte_duplicados_foneticos(session: Session, limite_reporte: int = 40, umb
 
     bloques_a_procesar = {k: v for k, v in bloques.items() if len(v) > 1}
     total_comparaciones = sum(len(v) * (len(v) - 1) // 2 for v in bloques_a_procesar.values())
-    print(f"Bloques a analizar (tamaño > 1): {len(bloques_a_procesar)} — comparaciones totales estimadas: {total_comparaciones}")
+    if imprimir_progreso:
+        print(f"Bloques a analizar (tamaño > 1): {len(bloques_a_procesar)} — comparaciones totales estimadas: {total_comparaciones}")
 
     candidatos = []
     for bloque, personas_bloque in bloques_a_procesar.items():
         for i in range(len(personas_bloque)):
             for j in range(i + 1, len(personas_bloque)):
-                id_a, nom_a, edad_a, hosp_a, ciu_a = personas_bloque[i]
-                id_b, nom_b, edad_b, hosp_b, ciu_b = personas_bloque[j]
+                id_a, nom_a, edad_a, hosp_a, ciu_a, ced_a = personas_bloque[i]
+                id_b, nom_b, edad_b, hosp_b, ciu_b, ced_b = personas_bloque[j]
                 if nom_a.strip().lower() == nom_b.strip().lower():
                     continue  # nombre exacto, no es el caso que buscamos aquí
                 categoria, score = comparar(nom_a, nom_b)
@@ -183,11 +194,17 @@ def reporte_duplicados_foneticos(session: Session, limite_reporte: int = 40, umb
                 # positivos entre personas distintas del mismo evento/zona.
                 lugar_compatible = normalizar_hospital(hosp_a or "") == normalizar_hospital(hosp_b or "")
                 if edad_compatible and (lugar_compatible or (not hosp_a and not hosp_b)):
-                    candidatos.append((score, id_a, nom_a, id_b, nom_b, edad_a, edad_b, hosp_a, hosp_b))
+                    candidatos.append((score, id_a, nom_a, id_b, nom_b, edad_a, edad_b, hosp_a, hosp_b, ced_a, ced_b))
 
     candidatos.sort(key=lambda c: -c[0])
+    return candidatos
+
+
+def reporte_duplicados_foneticos(session: Session, limite_reporte: int = 40, umbral_division: int = 60):
+    print("\n=== 4. Posibles duplicados por nombre fonéticamente similar (no exacto) ===")
+    candidatos = generar_candidatos_foneticos(session, umbral_division)
     print(f"Candidatos a duplicado encontrados: {len(candidatos)} (cobertura completa, bloqueo de 2 niveles)")
-    for score, id_a, nom_a, id_b, nom_b, edad_a, edad_b, hosp_a, hosp_b in candidatos[:limite_reporte]:
+    for score, id_a, nom_a, id_b, nom_b, edad_a, edad_b, hosp_a, hosp_b, ced_a, ced_b in candidatos[:limite_reporte]:
         print(f"\n  score={score}")
         print(f"    A: id={id_a} nombre='{nom_a}' edad={edad_a} hospital='{hosp_a}'")
         print(f"    B: id={id_b} nombre='{nom_b}' edad={edad_b} hospital='{hosp_b}'")
