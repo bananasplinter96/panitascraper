@@ -38,6 +38,14 @@ def normalizar(nombre: str) -> str:
     return n
 
 
+def normalizar_hospital(texto: str) -> str:
+    """Igual que normalizar(), pero conserva dígitos (nombres de centros
+    suelen incluir números: "Hospital 2", "Cama 7")."""
+    h = re.sub(r"[^\w\s]", " ", (texto or "").upper())
+    h = re.sub(r"\s+", " ", h).strip()
+    return h
+
+
 def codigo_fonetico(token: str) -> str:
     """Reduce un token a un código fonético aproximado."""
     t = token.lower()
