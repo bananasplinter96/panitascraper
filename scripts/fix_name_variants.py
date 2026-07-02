@@ -27,16 +27,25 @@ expuesto en el campo nombre):
      la primera parte" da un resultado sin letras suficientes para ser
      un nombre (ej. "R / N Parra" -> canónico "R", perdiendo el
      apellido real; probablemente "R/N" = abreviatura médica de
-     "Recién Nacido" partida por el separador), o donde la primera
-     parte trae una marca explícita de incertidumbre como
-     "[Ilegible]" (ej. "Alexey [Ilegible] / Jose Cleonir Marley" ->
-     canónico "Alexey [Ilegible]", descartando el nombre legible). NO
-     se repara automáticamente — requiere decidir a mano cuál parte es
-     el nombre real.
+     "Recién Nacido" partida por el separador), donde la primera parte
+     trae una marca explícita de incertidumbre como "[Ilegible]" (ej.
+     "Alexey [Ilegible] / Jose Cleonir Marley" -> canónico "Alexey
+     [Ilegible]", descartando el nombre legible), o donde el canónico
+     es mucho más corto que la variante descartada (señal de que un
+     nombre completo se partió por accidente en apellido/nombre, ej.
+     "RAMOS/SILVA MARYELIS" -> canónico "RAMOS", perdiendo "Silva
+     Maryelis"). NO se repara automáticamente — requiere decidir a
+     mano cuál parte es el nombre real.
+
+  5. posible_inyeccion: el nombre contiene sintaxis de marcado HTML o
+     un vector de inyección conocido (ej. '"><svg/onload=(...)>',
+     capturado tal cual de un intento de XSS contra el sitio fuente).
+     NO es un nombre real, no se repara — solo se reporta para que un
+     humano decida borrar la fila.
 
 Por defecto solo reporta. Usa --apply para aplicar la reparación
-automática del grupo 1 únicamente (excluyendo canonico_sospechoso).
-Los demás grupos nunca se tocan por este script, sin importar --apply.
+automática del grupo 'variantes_ocr' únicamente. Los demás grupos
+nunca se tocan por este script, sin importar --apply.
 
 Uso:
     DATABASE_URL=postgresql://<user>:<pass>@localhost:5432/panitasmap \
@@ -61,9 +70,12 @@ if not DATABASE_URL:
 
 _ADMIN_RE = re.compile(r"C\.I\.\s*registrada|ecrespo-github|coincidencia\s*~?\d+%", re.IGNORECASE)
 _WHATSAPP_RE = re.compile(r"^\s*\[\d{1,2}/\d{1,2},\s*\d{1,2}:\d{2}")
+_MARKUP_RE = re.compile(r"<[a-zA-Z!/][^>]*>|javascript:|on(error|load)\s*=", re.IGNORECASE)
 
 
 def clasificar(nombre: str) -> str:
+    if _MARKUP_RE.search(nombre):
+        return "posible_inyeccion"
     if _ADMIN_RE.search(nombre):
         return "notas_administrativas"
     if _WHATSAPP_RE.match(nombre):
@@ -84,14 +96,22 @@ _LETRAS_RE = re.compile(r"[^A-Za-zÀ-ÿ]")
 _ILEGIBLE_RE = re.compile(r"ilegible", re.IGNORECASE)
 
 
-def canonico_sospechoso(canonico: str) -> bool:
+def canonico_sospechoso(canonico: str, variantes: list[str] | None = None) -> bool:
     """True si el candidato a nombre canónico tiene muy pocas letras
     para ser un nombre real (ej. 'R', 'P.2') — señal de que la parte
-    antes del '/' era una abreviatura/anotación, no un nombre — o si
-    contiene una marca explícita de incertidumbre como '[Ilegible]'."""
+    antes del '/' era una abreviatura/anotación, no un nombre —, si
+    contiene una marca explícita de incertidumbre como '[Ilegible]',
+    o si es mucho más corto que la variante descartada más larga
+    (señal de que un nombre completo se partió por accidente)."""
     if _ILEGIBLE_RE.search(canonico):
         return True
-    return len(_LETRAS_RE.sub("", canonico)) <= 2
+    if len(_LETRAS_RE.sub("", canonico)) <= 2:
+        return True
+    if variantes:
+        largo_max = max(len(v) for v in variantes)
+        if largo_max > 0 and len(canonico) < largo_max * 0.4:
+            return True
+    return False
 
 
 def main():
@@ -110,12 +130,13 @@ def main():
             "notas_administrativas": [],
             "mensaje_multiple": [],
             "canonico_sospechoso": [],
+            "posible_inyeccion": [],
         }
         for persona_id, nombre, notas in rows:
             grupo = clasificar(nombre)
             if grupo == "variantes_ocr":
-                canonico, _ = dividir_variantes(nombre)
-                if canonico_sospechoso(canonico):
+                canonico, variantes = dividir_variantes(nombre)
+                if canonico_sospechoso(canonico, variantes):
                     grupo = "canonico_sospechoso"
             grupos[grupo].append((persona_id, nombre, notas))
 
@@ -135,6 +156,10 @@ def main():
         for persona_id, nombre, _ in grupos["canonico_sospechoso"][:10]:
             canonico, variantes = dividir_variantes(nombre)
             print(f"  id={persona_id}\n    nombre='{nombre}'\n    canónico descartado por sospechoso='{canonico}'")
+
+        print("\n--- posible_inyeccion (revisión manual — candidatas a BORRAR, no son nombres) ---")
+        for persona_id, nombre, _ in grupos["posible_inyeccion"]:
+            print(f"  id={persona_id}\n    nombre='{nombre}'")
 
         print("\n--- Muestra: variantes_ocr (se repara automáticamente con --apply) ---")
         for persona_id, nombre, _ in grupos["variantes_ocr"][:10]:
@@ -158,8 +183,9 @@ def main():
             session.commit()
             print(f"Reparadas {aplicadas} filas de 'variantes_ocr'.")
             print(f"'notas_administrativas' ({len(grupos['notas_administrativas'])}), "
-                  f"'mensaje_multiple' ({len(grupos['mensaje_multiple'])}) y "
-                  f"'canonico_sospechoso' ({len(grupos['canonico_sospechoso'])}) "
+                  f"'mensaje_multiple' ({len(grupos['mensaje_multiple'])}), "
+                  f"'canonico_sospechoso' ({len(grupos['canonico_sospechoso'])}) y "
+                  f"'posible_inyeccion' ({len(grupos['posible_inyeccion'])}) "
                   f"NO se tocaron — requieren revisión manual.")
         else:
             print("\n(Modo reporte — no se modificó nada. Usa --apply para reparar 'variantes_ocr'.)")
